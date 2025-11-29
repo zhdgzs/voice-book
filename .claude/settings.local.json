@@ -16,7 +16,10 @@
       "Bash(flutter pub get:*)",
       "Bash(find:*)",
       "mcp__sequential-thinking__sequentialthinking",
-      "Bash(where:*)"
+      "Bash(where:*)",
+      "Bash(cat:*)",
+      "Bash(flutter analyze:*)",
+      "Bash(git diff:*)"
     ],
     "deny": [],
     "ask": []
