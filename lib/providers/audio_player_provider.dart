@@ -3,6 +3,7 @@ import 'package:just_audio/just_audio.dart';
 import '../models/audio_file.dart';
 import '../models/playback_progress.dart';
 import '../services/database_service.dart';
+import 'package:sqflite/sqflite.dart';
 
 /// 音频播放器 Provider
 ///

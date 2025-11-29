@@ -110,7 +110,7 @@ extension DoubleExtension on double {
   String get toPercentageString => '${(this * 100).toStringAsFixed(0)}%';
 
   /// 限制在指定范围内
-  double clampTo(double min, double max) => clamp(min, max);
+  double clampTo(double min, double max) => clamp(min, max).toDouble();
 }
 
 /// DateTime 扩展

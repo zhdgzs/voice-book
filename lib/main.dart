@@ -55,7 +55,7 @@ class VoiceBookApp extends StatelessWidget {
                 centerTitle: true,
                 elevation: 0,
               ),
-              cardTheme: CardTheme(
+              cardTheme: CardThemeData(
                 elevation: 2,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(
@@ -63,6 +63,7 @@ class VoiceBookApp extends StatelessWidget {
                   ),
                 ),
               ),
+
               inputDecorationTheme: InputDecorationTheme(
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(
@@ -89,7 +90,7 @@ class VoiceBookApp extends StatelessWidget {
                 centerTitle: true,
                 elevation: 0,
               ),
-              cardTheme: CardTheme(
+              cardTheme: CardThemeData(
                 elevation: 2,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(
@@ -97,6 +98,7 @@ class VoiceBookApp extends StatelessWidget {
                   ),
                 ),
               ),
+
               inputDecorationTheme: InputDecorationTheme(
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(
@@ -176,7 +178,10 @@ class HomePage extends StatelessWidget {
               Text(
                 AppConstants.appDescription,
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(0.6),
                     ),
                 textAlign: TextAlign.center,
               ),
@@ -191,15 +196,18 @@ class HomePage extends StatelessWidget {
                     children: [
                       Text(
                         '✅ 基础架构已完成',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
                       ),
                       const SizedBox(height: UIConstants.smallPadding),
                       const Text('• 项目目录结构'),
                       const Text('• 数据库服务'),
-                      const Text('• 数据模型（Book, AudioFile, PlaybackProgress, Bookmark）'),
-                      const Text('• 状态管理（BookProvider, AudioPlayerProvider, SettingsProvider）'),
+                      const Text(
+                          '• 数据模型（Book, AudioFile, PlaybackProgress, Bookmark）'),
+                      const Text(
+                          '• 状态管理（BookProvider, AudioPlayerProvider, SettingsProvider）'),
                       const Text('• 工具类和常量定义'),
                       const Text('• 文件扫描服务 ✨ 新增'),
                       const Text('• 权限管理服务 ✨ 新增'),
@@ -210,7 +218,8 @@ class HomePage extends StatelessWidget {
                           onPressed: () {
                             Navigator.of(context).push(
                               MaterialPageRoute(
-                                builder: (context) => const FileScannerTestScreen(),
+                                builder: (context) =>
+                                    const FileScannerTestScreen(),
                               ),
                             );
                           },

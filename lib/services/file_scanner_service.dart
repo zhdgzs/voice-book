@@ -1,7 +1,7 @@
 import 'dart:io';
-import 'package:flutter_media_metadata/flutter_media_metadata.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
+import 'audio_metadata_service.dart';
 
 /// 文件扫描服务
 ///
@@ -17,6 +17,9 @@ class FileScannerService {
   static final FileScannerService _instance = FileScannerService._internal();
   factory FileScannerService() => _instance;
   FileScannerService._internal();
+
+  // 元数据服务实例
+  final AudioMetadataService _metadataService = AudioMetadataService();
 
   /// 支持的音频文件扩展名
   static const List<String> supportedExtensions = [
@@ -154,82 +157,50 @@ class FileScannerService {
     return directories;
   }
 
-  /// 读取音频文件元数据
+  /// 读取音频文件元数据（快速模式，不加载封面）
   ///
   /// [file] 音频文件
   ///
-  /// 返回包含元数据的 Map，包括：
-  /// - title: 标题
-  /// - artist: 作者/艺术家
-  /// - album: 专辑
-  /// - duration: 时长（毫秒）
-  /// - trackNumber: 曲目编号
-  /// - year: 年份
-  /// - genre: 流派
-  /// - filePath: 文件路径
-  /// - fileName: 文件名
-  /// - fileSize: 文件大小（字节）
-  Future<Map<String, dynamic>> readMetadata(File file) async {
-    final metadata = <String, dynamic>;
-
-    try {
-      // 使用 flutter_media_metadata 读取元数据
-      final retriever = MetadataRetriever();
-      final mediaMetadata = await retriever.fromFile(file);
-
-      // 提取元数据
-      metadata['title'] = mediaMetadata.trackName ?? _getFileNameWithoutExtension(file.path);
-      metadata['artist'] = mediaMetadata.trackArtistNames?.join(', ') ?? '未知作者';
-      metadata['album'] = mediaMetadata.albumName ?? '未知专辑';
-      metadata['duration'] = mediaMetadata.trackDuration?.inMilliseconds ?? 0;
-      metadata['trackNumber'] = mediaMetadata.trackNumber;
-      metadata['year'] = mediaMetadata.year;
-      metadata['genre'] = mediaMetadata.genre;
-    } catch (e) {
-      // 如果读取元数据失败，使用默认值
-      print('读取元数据失败: ${file.path}, 错误: $e');
-      metadata['title'] = _getFileNameWithoutExtension(file.path);
-      metadata['artist'] = '未知作者';
-      metadata['album'] = '未知专辑';
-      metadata['duration'] = 0;
-      metadata['trackNumber'] = null;
-      metadata['year'] = null;
-      metadata['genre'] = null;
-    }
-
-    // 添加文件信息
-    metadata['filePath'] = file.path;
-    metadata['fileName'] = path.basename(file.path);
-    metadata['fileSize'] = await file.length();
-
-    return metadata;
+  /// 返回包含元数据的 AudioMetadata 对象
+  /// 此方法跳过封面图片读取，适合批量扫描场景
+  Future<AudioMetadata> readMetadata(File file) async {
+    return _metadataService.readMetadataQuick(file);
   }
 
-  /// 批量读取音频文件元数据
+  /// 读取音频文件元数据（完整模式，包含封面）
+  ///
+  /// [file] 音频文件
+  ///
+  /// 返回包含完整元数据的 AudioMetadata 对象，包括封面图片
+  Future<AudioMetadata> readMetadataWithCover(File file) async {
+    return _metadataService.readMetadataFull(file);
+  }
+
+  /// 批量读取音频文件元数据（快速模式）
   ///
   /// [files] 音频文件列表
   /// [onProgress] 进度回调，参数为已处理的文件数量和总文件数量
   ///
-  /// 返回包含元数据的 Map 列表
-  Future<List<Map<String, dynamic>>> readMultipleMetadata(
+  /// 返回包含元数据的 AudioMetadata 列表
+  /// 此方法跳过封面图片读取，适合批量扫描场景
+  Future<List<AudioMetadata>> readMultipleMetadata(
     List<File> files, {
     void Function(int current, int total)? onProgress,
   }) async {
-    final List<Map<String, dynamic>> metadataList = [];
+    return _metadataService.readMultipleMetadataQuick(files, onProgress: onProgress);
+  }
 
-    for (int i = 0; i < files.length; i++) {
-      try {
-        final metadata = await readMetadata(files[i]);
-        metadataList.add(metadata);
-
-        // 调用进度回调
-        onProgress?.call(i + 1, files.length);
-      } catch (e) {
-        print('读取元数据失败: ${files[i].path}, 错误: $e');
-      }
-    }
-
-    return metadataList;
+  /// 批量读取音频文件元数据（完整模式）
+  ///
+  /// [files] 音频文件列表
+  /// [onProgress] 进度回调，参数为已处理的文件数量和总文件数量
+  ///
+  /// 返回包含完整元数据的 AudioMetadata 列表，包括封面图片
+  Future<List<AudioMetadata>> readMultipleMetadataWithCover(
+    List<File> files, {
+    void Function(int current, int total)? onProgress,
+  }) async {
+    return _metadataService.readMultipleMetadataFull(files, onProgress: onProgress);
   }
 
   /// 按目录分组音频文件
@@ -350,7 +321,7 @@ class FileScannerService {
     for (final file in files) {
       try {
         final metadata = await readMetadata(file);
-        totalDuration += (metadata['duration'] as int?) ?? 0;
+        totalDuration += metadata.duration ?? 0;
       } catch (e) {
         print('获取时长失败: ${file.path}, 错误: $e');
       }

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:voice_book/services/permission_service.dart';
 import 'package:voice_book/services/file_scanner_service.dart';
+import 'package:voice_book/services/audio_metadata_service.dart';
 
 /// 文件扫描测试页面
 ///
@@ -20,7 +21,7 @@ class _FileScannerTestScreenState extends State<FileScannerTestScreen> {
   bool _hasPermission = false;
   bool _isScanning = false;
   List<File> _scannedFiles = [];
-  List<Map<String, dynamic>> _metadataList = [];
+  List<AudioMetadata> _metadataList = [];
   String _statusMessage = '准备就绪';
   int _scanProgress = 0;
 
@@ -55,8 +56,8 @@ class _FileScannerTestScreenState extends State<FileScannerTestScreen> {
     if (!granted) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('需要存储权限才能扫描音频文件'),
+          SnackBar(
+            content: const Text('需要存储权限才能扫描音频文件'),
             action: SnackBarAction(
               label: '打开设置',
               onPressed: PermissionService().openSettings,
@@ -130,8 +131,18 @@ class _FileScannerTestScreenState extends State<FileScannerTestScreen> {
     }
   }
 
-  /// 读取元数据
+  /// 读取元数据（快速模式，不加载封面）
   Future<void> _readMetadata() async {
+    await _readMetadataInternal(loadCover: false);
+  }
+
+  /// 读取元数据（完整模式，包含封面）
+  Future<void> _readMetadataWithCover() async {
+    await _readMetadataInternal(loadCover: true);
+  }
+
+  /// 内部方法：读取元数据
+  Future<void> _readMetadataInternal({required bool loadCover}) async {
     if (_scannedFiles.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('请先扫描音频文件')),
@@ -141,7 +152,7 @@ class _FileScannerTestScreenState extends State<FileScannerTestScreen> {
 
     setState(() {
       _isScanning = true;
-      _statusMessage = '正在读取元数据...';
+      _statusMessage = loadCover ? '正在读取元数据（含封面）...' : '正在读取元数据（快速模式）...';
       _metadataList.clear();
     });
 
@@ -149,23 +160,37 @@ class _FileScannerTestScreenState extends State<FileScannerTestScreen> {
       // 只读取前 10 个文件的元数据（避免耗时过长）
       final filesToRead = _scannedFiles.take(10).toList();
 
-      final metadataList = await _scannerService.readMultipleMetadata(
-        filesToRead,
-        onProgress: (current, total) {
-          setState(() {
-            _statusMessage = '正在读取元数据 $current/$total...';
-          });
-        },
-      );
+      final metadataList = loadCover
+          ? await _scannerService.readMultipleMetadataWithCover(
+              filesToRead,
+              onProgress: (current, total) {
+                setState(() {
+                  _statusMessage = '正在读取元数据（含封面） $current/$total...';
+                });
+              },
+            )
+          : await _scannerService.readMultipleMetadata(
+              filesToRead,
+              onProgress: (current, total) {
+                setState(() {
+                  _statusMessage = '正在读取元数据 $current/$total...';
+                });
+              },
+            );
 
       setState(() {
         _metadataList = metadataList;
-        _statusMessage = '元数据读取完成！共 ${metadataList.length} 个文件';
+        _statusMessage = '元数据读取完成！共 ${metadataList.length} 个文件'
+            '${loadCover ? '，其中 ${metadataList.where((m) => m.hasCover).length} 个有封面' : ''}';
       });
 
       if (mounted) {
+        final coverCount = _metadataList.where((m) => m.hasCover).length;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('元数据读取完成！共 ${metadataList.length} 个文件')),
+          SnackBar(
+            content: Text('元数据读取完成！共 ${_metadataList.length} 个文件'
+                '${loadCover ? '，其中 $coverCount 个有封面' : ''}'),
+          ),
         );
       }
     } catch (e) {
@@ -240,7 +265,8 @@ class _FileScannerTestScreenState extends State<FileScannerTestScreen> {
                         ),
                       if (_hasPermission)
                         ElevatedButton.icon(
-                          onPressed: _isScanning ? null : _scanCommonDirectories,
+                          onPressed:
+                              _isScanning ? null : _scanCommonDirectories,
                           icon: const Icon(Icons.search),
                           label: const Text('扫描音频文件'),
                         ),
@@ -248,7 +274,14 @@ class _FileScannerTestScreenState extends State<FileScannerTestScreen> {
                         ElevatedButton.icon(
                           onPressed: _isScanning ? null : _readMetadata,
                           icon: const Icon(Icons.info),
-                          label: const Text('读取元数据'),
+                          label: const Text('读取元数据（快速）'),
+                        ),
+                      if (_scannedFiles.isNotEmpty)
+                        ElevatedButton.icon(
+                          onPressed:
+                              _isScanning ? null : _readMetadataWithCover,
+                          icon: const Icon(Icons.image),
+                          label: const Text('读取元数据（含封面）'),
                         ),
                     ],
                   ),
@@ -312,11 +345,16 @@ class _FileScannerTestScreenState extends State<FileScannerTestScreen> {
                     itemBuilder: (context, index) {
                       final metadata = _metadataList[index];
                       return ListTile(
-                        leading: const CircleAvatar(
-                          child: Icon(Icons.music_note),
+                        leading: CircleAvatar(
+                          backgroundColor:
+                              metadata.hasCover ? Colors.blue : Colors.grey,
+                          child: Icon(
+                            metadata.hasCover ? Icons.image : Icons.music_note,
+                            color: Colors.white,
+                          ),
                         ),
                         title: Text(
-                          metadata['title'] ?? '未知标题',
+                          metadata.displayTitle,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -324,18 +362,18 @@ class _FileScannerTestScreenState extends State<FileScannerTestScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '作者: ${metadata['artist'] ?? '未知'}',
+                              '作者: ${metadata.displayArtist}',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
                             Text(
-                              '专辑: ${metadata['album'] ?? '未知'}',
+                              '专辑: ${metadata.displayAlbum}',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
                             Text(
-                              '时长: ${_formatDuration(metadata['duration'] ?? 0)} | '
-                              '大小: ${_scannerService.formatFileSize(metadata['fileSize'] ?? 0)}',
+                              '时长: ${metadata.formattedDuration} | '
+                              '大小: ${metadata.formattedFileSize}',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.grey[600],
@@ -372,7 +410,7 @@ class _FileScannerTestScreenState extends State<FileScannerTestScreen> {
   }
 
   /// 显示文件详情
-  void _showFileDetails(Map<String, dynamic> metadata) {
+  void _showFileDetails(AudioMetadata metadata) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -382,16 +420,34 @@ class _FileScannerTestScreenState extends State<FileScannerTestScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildDetailRow('标题', metadata['title']),
-              _buildDetailRow('作者', metadata['artist']),
-              _buildDetailRow('专辑', metadata['album']),
-              _buildDetailRow('时长', _formatDuration(metadata['duration'] ?? 0)),
-              _buildDetailRow('曲目编号', metadata['trackNumber']?.toString()),
-              _buildDetailRow('年份', metadata['year']?.toString()),
-              _buildDetailRow('流派', metadata['genre']),
-              _buildDetailRow('文件名', metadata['fileName']),
-              _buildDetailRow('文件大小', _scannerService.formatFileSize(metadata['fileSize'] ?? 0)),
-              _buildDetailRow('文件路径', metadata['filePath'], isPath: true),
+              // 封面图片（如果有）
+              if (metadata.hasCover) ...[
+                Center(
+                  child: Container(
+                    width: 150,
+                    height: 150,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      image: DecorationImage(
+                        image: MemoryImage(metadata.coverImage!),
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              _buildDetailRow('标题', metadata.displayTitle),
+              _buildDetailRow('作者', metadata.displayArtist),
+              _buildDetailRow('专辑', metadata.displayAlbum),
+              _buildDetailRow('时长', metadata.formattedDuration),
+              _buildDetailRow('曲目编号', metadata.trackNumber?.toString()),
+              _buildDetailRow('年份', metadata.year?.toString()),
+              _buildDetailRow('流派', metadata.genre),
+              _buildDetailRow('文件名', metadata.fileName),
+              _buildDetailRow('文件大小', metadata.formattedFileSize),
+              _buildDetailRow('封面', metadata.hasCover ? '有' : '无'),
+              _buildDetailRow('文件路径', metadata.filePath, isPath: true),
             ],
           ),
         ),
