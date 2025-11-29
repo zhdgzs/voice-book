@@ -4,6 +4,7 @@ import 'providers/book_provider.dart';
 import 'providers/audio_player_provider.dart';
 import 'providers/settings_provider.dart';
 import 'utils/constants.dart';
+import 'screens/file_scanner_test_screen.dart';
 
 void main() async {
   // 确保 Flutter 绑定初始化
@@ -200,13 +201,25 @@ class HomePage extends StatelessWidget {
                       const Text('• 数据模型（Book, AudioFile, PlaybackProgress, Bookmark）'),
                       const Text('• 状态管理（BookProvider, AudioPlayerProvider, SettingsProvider）'),
                       const Text('• 工具类和常量定义'),
+                      const Text('• 文件扫描服务 ✨ 新增'),
+                      const Text('• 权限管理服务 ✨ 新增'),
                       const SizedBox(height: UIConstants.defaultPadding),
-                      Text(
-                        '📋 下一步：实现音频文件管理功能',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Theme.of(context).colorScheme.primary,
-                              fontWeight: FontWeight.bold,
-                            ),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => const FileScannerTestScreen(),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.science),
+                          label: const Text('测试文件扫描功能'),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.all(16),
+                          ),
+                        ),
                       ),
                     ],
                   ),
