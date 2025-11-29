@@ -12,7 +12,9 @@
       "Bash(mkdir:*)",
       "Bash(git rev-parse:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(flutter pub get:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

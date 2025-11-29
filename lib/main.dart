@@ -1,37 +1,219 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'providers/book_provider.dart';
+import 'providers/audio_player_provider.dart';
+import 'providers/settings_provider.dart';
+import 'utils/constants.dart';
 
-void main() {
-  runApp(const VoiceBookApp());
+void main() async {
+  // 确保 Flutter 绑定初始化
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // 初始化设置 Provider
+  final settingsProvider = SettingsProvider();
+  await settingsProvider.initialize();
+
+  runApp(VoiceBookApp(settingsProvider: settingsProvider));
 }
 
 class VoiceBookApp extends StatelessWidget {
-  const VoiceBookApp({super.key});
+  final SettingsProvider settingsProvider;
+
+  const VoiceBookApp({
+    super.key,
+    required this.settingsProvider,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'VoiceBook',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
+    return MultiProvider(
+      providers: [
+        // 设置 Provider
+        ChangeNotifierProvider.value(value: settingsProvider),
+        // 书籍管理 Provider
+        ChangeNotifierProvider(create: (_) => BookProvider()),
+        // 音频播放器 Provider
+        ChangeNotifierProvider(create: (_) => AudioPlayerProvider()),
+      ],
+      child: Consumer<SettingsProvider>(
+        builder: (context, settings, _) {
+          return MaterialApp(
+            title: AppConstants.appName,
+            debugShowCheckedModeBanner: false,
+
+            // 主题配置
+            theme: ThemeData(
+              colorScheme: ColorScheme.fromSeed(
+                seedColor: Colors.deepPurple,
+                brightness: Brightness.light,
+              ),
+              useMaterial3: true,
+
+              // 自定义主题样式
+              appBarTheme: const AppBarTheme(
+                centerTitle: true,
+                elevation: 0,
+              ),
+              cardTheme: CardTheme(
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    UIConstants.defaultBorderRadius,
+                  ),
+                ),
+              ),
+              inputDecorationTheme: InputDecorationTheme(
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(
+                    UIConstants.defaultBorderRadius,
+                  ),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: UIConstants.defaultPadding,
+                  vertical: UIConstants.smallPadding,
+                ),
+              ),
+            ),
+
+            // 暗色主题配置
+            darkTheme: ThemeData(
+              colorScheme: ColorScheme.fromSeed(
+                seedColor: Colors.deepPurple,
+                brightness: Brightness.dark,
+              ),
+              useMaterial3: true,
+
+              // 自定义暗色主题样式
+              appBarTheme: const AppBarTheme(
+                centerTitle: true,
+                elevation: 0,
+              ),
+              cardTheme: CardTheme(
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    UIConstants.defaultBorderRadius,
+                  ),
+                ),
+              ),
+              inputDecorationTheme: InputDecorationTheme(
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(
+                    UIConstants.defaultBorderRadius,
+                  ),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: UIConstants.defaultPadding,
+                  vertical: UIConstants.smallPadding,
+                ),
+              ),
+            ),
+
+            // 主题模式
+            themeMode: settings.themeMode,
+
+            // 首页
+            home: const HomePage(),
+          );
+        },
       ),
-      darkTheme: ThemeData.dark(useMaterial3: true),
-      home: const _ScaffoldPlaceholder(),
     );
   }
 }
 
-class _ScaffoldPlaceholder extends StatelessWidget {
-  const _ScaffoldPlaceholder();
+/// 首页占位符
+///
+/// 临时首页，展示项目基础架构已完成的信息
+/// 后续将替换为实际的书架页面
+class HomePage extends StatelessWidget {
+  const HomePage({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('VoiceBook')),
-      body: const Center(
-        child: Text(
-          '项目已初始化。待实现：书架、播放、设置等功能，详见 design.md',
-          textAlign: TextAlign.center,
+      appBar: AppBar(
+        title: const Text(AppConstants.appName),
+        actions: [
+          // 主题切换按钮
+          IconButton(
+            icon: Icon(
+              context.watch<SettingsProvider>().isDarkMode
+                  ? Icons.light_mode
+                  : Icons.dark_mode,
+            ),
+            onPressed: () {
+              context.read<SettingsProvider>().toggleThemeMode();
+            },
+            tooltip: '切换主题',
+          ),
+        ],
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(UIConstants.defaultPadding),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // 应用图标占位
+              Icon(
+                Icons.book,
+                size: 100,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(height: UIConstants.largePadding),
+
+              // 应用名称
+              Text(
+                AppConstants.appName,
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const SizedBox(height: UIConstants.smallPadding),
+
+              // 应用描述
+              Text(
+                AppConstants.appDescription,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                    ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: UIConstants.largePadding * 2),
+
+              // 状态信息
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(UIConstants.defaultPadding),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '✅ 基础架构已完成',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                      ),
+                      const SizedBox(height: UIConstants.smallPadding),
+                      const Text('• 项目目录结构'),
+                      const Text('• 数据库服务'),
+                      const Text('• 数据模型（Book, AudioFile, PlaybackProgress, Bookmark）'),
+                      const Text('• 状态管理（BookProvider, AudioPlayerProvider, SettingsProvider）'),
+                      const Text('• 工具类和常量定义'),
+                      const SizedBox(height: UIConstants.defaultPadding),
+                      Text(
+                        '📋 下一步：实现音频文件管理功能',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Theme.of(context).colorScheme.primary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
