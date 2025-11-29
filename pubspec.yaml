@@ -17,6 +17,7 @@ dependencies:
   just_audio_background: ^0.0.1-beta.17
   audio_session: ^0.1.18
   permission_handler: ^11.0.1
+  device_info_plus: ^11.2.0
   shared_preferences: ^2.2.2
   path: ^1.8.3
   audio_metadata_reader: ^1.4.2
