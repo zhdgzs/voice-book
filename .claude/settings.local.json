@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:mp.weixin.qq.com)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__get-library-docs",
+      "WebFetch(domain:pub.dev)",
+      "Bash(flutter pub outdated:*)",
+      "WebFetch(domain:blog.csdn.net)",
+      "Bash(echo:*)",
+      "mcp__fetch__fetch",
+      "Bash(mkdir:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
