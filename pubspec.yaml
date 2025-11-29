@@ -13,11 +13,13 @@ dependencies:
   provider: ^6.0.5
   sqflite: ^2.3.0
   path_provider: ^2.1.2
-  just_audio: ^0.9.37
+  just_audio: ^0.10.5
+  just_audio_background: ^0.0.1-beta.17
+  audio_session: ^0.1.18
   permission_handler: ^11.0.1
   shared_preferences: ^2.2.2
   path: ^1.8.3
-  flutter_media_metadata: ^1.0.0
+  audio_metadata_reader: ^1.4.2
   file_picker: ^10.3.7
 
 dev_dependencies:
