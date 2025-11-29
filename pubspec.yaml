@@ -1,0 +1,27 @@
+name: voice_book
+description: Offline local audiobook player focusing on low resource usage and privacy.
+version: 0.0.1
+publish_to: "none"
+
+environment:
+  sdk: ">=3.2.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  provider: ^6.0.5
+  sqflite: ^2.3.0
+  path_provider: ^2.1.2
+  just_audio: ^0.9.37
+  permission_handler: ^11.0.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/
