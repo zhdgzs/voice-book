@@ -14,7 +14,9 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(flutter pub get:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "mcp__sequential-thinking__sequentialthinking",
+      "Bash(where:*)"
     ],
     "deny": [],
     "ask": []
