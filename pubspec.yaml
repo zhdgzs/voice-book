@@ -17,6 +17,8 @@ dependencies:
   permission_handler: ^11.0.1
   shared_preferences: ^2.2.2
   path: ^1.8.3
+  flutter_media_metadata: ^1.0.0
+  file_picker: ^10.3.7
 
 dev_dependencies:
   flutter_test:
