@@ -13,6 +13,9 @@ import '../services/database_service.dart';
 class BookProvider extends ChangeNotifier {
   final DatabaseService _databaseService = DatabaseService();
 
+  /// 获取数据库服务实例（用于直接数据库操作）
+  DatabaseService get databaseService => _databaseService;
+
   /// 书籍列表
   List<Book> _books = [];
 

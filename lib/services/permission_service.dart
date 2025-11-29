@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 
 /// 权限管理服务
 ///
@@ -13,6 +15,12 @@ class PermissionService {
   static final PermissionService _instance = PermissionService._internal();
   factory PermissionService() => _instance;
   PermissionService._internal();
+
+  // 设备信息插件
+  final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
+
+  // 缓存 Android SDK 版本
+  int? _androidSdkVersion;
 
   /// 请求存储权限
   ///
@@ -130,20 +138,33 @@ class PermissionService {
     await openAppSettings();
   }
 
+  /// 获取 Android SDK 版本
+  Future<int> _getAndroidSdkVersion() async {
+    if (_androidSdkVersion != null) {
+      return _androidSdkVersion!;
+    }
+
+    if (Platform.isAndroid) {
+      final androidInfo = await _deviceInfo.androidInfo;
+      _androidSdkVersion = androidInfo.version.sdkInt;
+      return _androidSdkVersion!;
+    }
+
+    return 0;
+  }
+
   /// 检查是否为 Android 13 或以上版本
+  /// Android 13 = API Level 33
   Future<bool> _isAndroid13OrAbove() async {
-    // 这里简化处理，实际应该检查 Android SDK 版本
-    // 可以使用 device_info_plus 包获取系统版本
-    // 暂时返回 false，后续可以根据需要完善
-    return false;
+    final sdkVersion = await _getAndroidSdkVersion();
+    return sdkVersion >= 33;
   }
 
   /// 检查是否为 Android 11 或以上版本
+  /// Android 11 = API Level 30
   Future<bool> _isAndroid11OrAbove() async {
-    // 这里简化处理，实际应该检查 Android SDK 版本
-    // 可以使用 device_info_plus 包获取系统版本
-    // 暂时返回 true，假设大部分设备都是 Android 11+
-    return true;
+    final sdkVersion = await _getAndroidSdkVersion();
+    return sdkVersion >= 30;
   }
 
   /// 获取权限状态的描述文本

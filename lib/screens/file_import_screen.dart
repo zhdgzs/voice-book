@@ -30,6 +30,7 @@ class _FileImportScreenState extends State<FileImportScreen> {
 
   bool _hasPermission = false;
   bool _isScanning = false;
+  bool _recursiveScan = true; // 默认开启递归扫描
   String? _selectedFolderPath;
   String? _selectedFolderName;
   List<File> _scannedFiles = [];
@@ -99,11 +100,13 @@ class _FileImportScreenState extends State<FileImportScreen> {
       if (result != null) {
         final folderName = result.split(Platform.pathSeparator).last;
 
+        // 立即显示 loading 状态
         setState(() {
+          _isScanning = true;
           _selectedFolderPath = result;
           _selectedFolderName = folderName;
           _bookNameController.text = folderName;
-          _statusMessage = '已选择文件夹: $folderName';
+          _statusMessage = '准备扫描文件夹: $folderName';
           _scannedFiles.clear();
         });
 
@@ -111,6 +114,10 @@ class _FileImportScreenState extends State<FileImportScreen> {
         await _scanFolder();
       }
     } catch (e) {
+      setState(() {
+        _isScanning = false;
+      });
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('选择文件夹失败: $e')),
@@ -123,17 +130,16 @@ class _FileImportScreenState extends State<FileImportScreen> {
   Future<void> _scanFolder() async {
     if (_selectedFolderPath == null) return;
 
+    // 更新状态消息（loading 已经在 _pickFolder 中显示）
     setState(() {
-      _isScanning = true;
       _statusMessage = '正在扫描文件夹...';
-      _scannedFiles.clear();
     });
 
     try {
-      // 扫描文件夹（不递归，只扫描当前文件夹）
+      // 扫描文件夹（根据用户选择决定是否递归）
       final files = await _scannerService.scanDirectory(
         _selectedFolderPath!,
-        recursive: false, // 不递归，避免扫描过多文件
+        recursive: _recursiveScan,
         onProgress: (count) {
           setState(() {
             _statusMessage = '已找到 $count 个音频文件...';
@@ -272,19 +278,21 @@ class _FileImportScreenState extends State<FileImportScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('导入书籍'),
-        actions: [
-          if (_scannedFiles.isNotEmpty)
-            TextButton.icon(
-              onPressed: _isScanning ? null : _importBook,
-              icon: const Icon(Icons.check),
-              label: const Text('导入'),
-            ),
-        ],
-      ),
-      body: SingleChildScrollView(
+    return Stack(
+      children: [
+        Scaffold(
+          appBar: AppBar(
+            title: const Text('导入书籍'),
+            actions: [
+              if (_scannedFiles.isNotEmpty)
+                TextButton.icon(
+                  onPressed: _isScanning ? null : _importBook,
+                  icon: const Icon(Icons.check),
+                  label: const Text('导入'),
+                ),
+            ],
+          ),
+          body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -322,6 +330,33 @@ class _FileImportScreenState extends State<FileImportScreen> {
               ),
 
               const SizedBox(height: 16),
+
+              // 递归扫描开关
+              if (_hasPermission)
+                Card(
+                  child: SwitchListTile(
+                    title: const Text('递归扫描子文件夹'),
+                    subtitle: Text(
+                      _recursiveScan
+                          ? '将扫描选中文件夹及其所有子文件夹'
+                          : '仅扫描选中文件夹，不包含子文件夹',
+                    ),
+                    value: _recursiveScan,
+                    onChanged: _isScanning
+                        ? null
+                        : (value) {
+                            setState(() {
+                              _recursiveScan = value;
+                            });
+                          },
+                    secondary: Icon(
+                      _recursiveScan ? Icons.folder_open : Icons.folder,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ),
+
+              if (_hasPermission) const SizedBox(height: 16),
 
               // 选择文件夹按钮
               if (!_hasPermission)
@@ -526,11 +561,12 @@ class _FileImportScreenState extends State<FileImportScreen> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          '1. 点击"选择文件夹"按钮\n'
-                          '2. 选择包含音频文件的文件夹\n'
-                          '3. 系统会自动扫描该文件夹下的音频文件\n'
-                          '4. 确认书籍名称和作者信息\n'
-                          '5. 点击"导入"按钮完成导入',
+                          '1. 选择是否递归扫描子文件夹\n'
+                          '2. 点击"选择文件夹"按钮\n'
+                          '3. 选择包含音频文件的文件夹\n'
+                          '4. 系统会自动扫描该文件夹下的音频文件\n'
+                          '5. 确认书籍名称和作者信息\n'
+                          '6. 点击"导入"按钮完成导入',
                           style:
                               Theme.of(context).textTheme.bodyMedium?.copyWith(
                                     color: Colors.grey[700],
@@ -539,11 +575,15 @@ class _FileImportScreenState extends State<FileImportScreen> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          '提示：为避免卡顿，系统只扫描选中文件夹，不会递归扫描子文件夹',
+                          '提示：\n'
+                          '• 递归扫描：会扫描选中文件夹及其所有子文件夹（推荐）\n'
+                          '• 非递归扫描：仅扫描选中文件夹，不包含子文件夹\n'
+                          '• 导入时不读取元数据，确保快速导入',
                           style:
                               Theme.of(context).textTheme.bodySmall?.copyWith(
                                     color: Colors.grey[600],
                                     fontStyle: FontStyle.italic,
+                                    height: 1.4,
                                   ),
                         ),
                       ],
@@ -555,6 +595,44 @@ class _FileImportScreenState extends State<FileImportScreen> {
           ),
         ),
       ),
+    ),
+
+        // Loading 遮罩层
+        if (_isScanning)
+          Positioned.fill(
+            child: Container(
+              color: Colors.black54,
+              child: Center(
+                child: Card(
+                  margin: const EdgeInsets.all(32),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const CircularProgressIndicator(),
+                        const SizedBox(height: 24),
+                        Text(
+                          _statusMessage,
+                          style: Theme.of(context).textTheme.titleMedium,
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '请稍候，正在处理中...',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Colors.grey[600],
+                              ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
