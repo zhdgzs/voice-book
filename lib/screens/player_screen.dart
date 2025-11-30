@@ -6,6 +6,8 @@ import '../models/book.dart';
 import '../providers/audio_player_provider.dart';
 import '../providers/book_provider.dart';
 import '../providers/settings_provider.dart';
+import '../providers/sleep_timer_provider.dart';
+import '../widgets/sleep_timer_dialog.dart';
 import '../utils/helpers.dart';
 
 /// 音频播放器页面
@@ -393,16 +395,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
         // 倍速播放按钮
         _buildSpeedButton(context, audioPlayer),
 
-        // 定时器按钮（预留）
-        IconButton(
-          icon: const Icon(Icons.timer_outlined),
-          iconSize: 26,
-          onPressed: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('定时器功能即将推出')),
-            );
-          },
-        ),
+        // 睡眠定时器按钮
+        _buildSleepTimerButton(context),
       ],
     );
   }
@@ -826,6 +820,32 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ],
         );
       },
+    );
+  }
+
+  /// 构建睡眠定时器按钮
+  Widget _buildSleepTimerButton(BuildContext context) {
+    return Consumer<SleepTimerProvider>(
+      builder: (context, sleepTimer, child) {
+        final isActive = sleepTimer.isActive;
+
+        return IconButton(
+          icon: Icon(
+            isActive ? Icons.timer : Icons.timer_outlined,
+            color: isActive ? Theme.of(context).colorScheme.primary : null,
+          ),
+          iconSize: 26,
+          onPressed: () => _showSleepTimerDialog(context),
+        );
+      },
+    );
+  }
+
+  /// 显示睡眠定时器对话框
+  void _showSleepTimerDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => const SleepTimerDialog(),
     );
   }
 }

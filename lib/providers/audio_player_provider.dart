@@ -22,6 +22,9 @@ class AudioPlayerProvider extends ChangeNotifier {
   /// 设置 Provider（用于获取跳过时长配置）
   dynamic _settingsProvider;
 
+  /// 睡眠定时器 Provider
+  dynamic _sleepTimerProvider;
+
   /// 当前播放的音频文件
   AudioFile? _currentAudioFile;
 
@@ -76,6 +79,19 @@ class AudioPlayerProvider extends ChangeNotifier {
   /// 设置 SettingsProvider（用于获取跳过时长配置）
   void setSettingsProvider(dynamic settingsProvider) {
     _settingsProvider = settingsProvider;
+  }
+
+  /// 设置 SleepTimerProvider（用于睡眠定时器功能）
+  void setSleepTimerProvider(dynamic sleepTimerProvider) {
+    _sleepTimerProvider = sleepTimerProvider;
+    // 设置定时器到期回调
+    if (_sleepTimerProvider != null) {
+      try {
+        _sleepTimerProvider.setOnTimerExpired(_onSleepTimerExpired);
+      } catch (e) {
+        debugPrint('设置睡眠定时器回调失败: $e');
+      }
+    }
   }
 
   /// 获取跳过开头时长（秒）
@@ -436,6 +452,24 @@ class AudioPlayerProvider extends ChangeNotifier {
     // 保存进度
     await _saveProgress();
 
+    // 检查睡眠定时器（按集数模式）
+    if (_sleepTimerProvider != null) {
+      try {
+        final mode = _sleepTimerProvider.mode;
+        if (mode != null && mode.toString().contains('episodes')) {
+          debugPrint('📉 减少睡眠定时器剩余集数');
+          _sleepTimerProvider.decrementEpisode();
+          // 如果定时器已到期，不继续播放
+          if (!(_sleepTimerProvider.isActive as bool)) {
+            debugPrint('⏰ 睡眠定时器已到期，停止播放');
+            return;
+          }
+        }
+      } catch (e) {
+        debugPrint('❌ 处理睡眠定时器失败: $e');
+      }
+    }
+
     // 检查是否启用自动播放下一个
     if (_settingsProvider == null) {
       debugPrint('❌ SettingsProvider 为 null');
@@ -467,6 +501,15 @@ class AudioPlayerProvider extends ChangeNotifier {
       debugPrint('⚠️ 没有下一个音频文件（已是最后一个）');
     }
     debugPrint('========================================');
+  }
+
+  /// 睡眠定时器到期回调
+  Future<void> _onSleepTimerExpired() async {
+    debugPrint('⏰ 睡眠定时器到期，停止播放并保存进度');
+    // 暂停播放
+    await pause();
+    // 保存进度
+    await _saveProgress();
   }
 
   /// 获取下一个音频文件

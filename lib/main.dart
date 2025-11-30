@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'providers/book_provider.dart';
 import 'providers/audio_player_provider.dart';
 import 'providers/settings_provider.dart';
+import 'providers/sleep_timer_provider.dart';
 import 'utils/constants.dart';
 import 'screens/book_list_screen.dart';
 import 'screens/file_import_screen.dart';
@@ -39,15 +40,19 @@ class VoiceBookApp extends StatelessWidget {
         ChangeNotifierProvider.value(value: settingsProvider),
         // 书籍管理 Provider
         ChangeNotifierProvider(create: (_) => BookProvider()),
-        // 音频播放器 Provider（使用 ProxyProvider 注入 SettingsProvider）
-        ChangeNotifierProxyProvider<SettingsProvider, AudioPlayerProvider>(
+        // 睡眠定时器 Provider
+        ChangeNotifierProvider(create: (_) => SleepTimerProvider()),
+        // 音频播放器 Provider（使用 ProxyProvider 注入 SettingsProvider 和 SleepTimerProvider）
+        ChangeNotifierProxyProvider2<SettingsProvider, SleepTimerProvider, AudioPlayerProvider>(
           create: (context) {
             final audioPlayer = AudioPlayerProvider();
             audioPlayer.setSettingsProvider(context.read<SettingsProvider>());
+            audioPlayer.setSleepTimerProvider(context.read<SleepTimerProvider>());
             return audioPlayer;
           },
-          update: (context, settings, audioPlayer) {
+          update: (context, settings, sleepTimer, audioPlayer) {
             audioPlayer?.setSettingsProvider(settings);
+            audioPlayer?.setSleepTimerProvider(sleepTimer);
             return audioPlayer ?? AudioPlayerProvider();
           },
         ),
