@@ -5,10 +5,10 @@ import 'providers/audio_player_provider.dart';
 import 'providers/settings_provider.dart';
 import 'utils/constants.dart';
 import 'screens/book_list_screen.dart';
-import 'screens/book_detail_screen.dart';
 import 'screens/file_import_screen.dart';
 import 'screens/file_scanner_test_screen.dart';
 import 'screens/player_screen.dart';
+import 'screens/metadata_test_screen.dart';
 import 'models/book.dart';
 import 'models/audio_file.dart';
 
@@ -132,18 +132,13 @@ class VoiceBookApp extends StatelessWidget {
                     builder: (_) => const FileImportScreen(),
                   );
                 case '/book-detail':
-                  final book = settings.arguments as Book;
-                  return MaterialPageRoute(
-                    builder: (_) => BookDetailScreen(book: book),
-                  );
+                  return null; // 不使用路由，直接在BookListScreen中导航
                 case '/player':
-                  final args = settings.arguments as Map<String, dynamic>;
-                  final book = args['book'] as Book;
-                  final audioFile = args['audioFile'] as AudioFile;
+                  final args = settings.arguments as Map<String, dynamic>?;
                   return MaterialPageRoute(
                     builder: (_) => PlayerScreen(
-                      book: book,
-                      audioFile: audioFile,
+                      book: args?['book'] as Book?,
+                      audioFile: args?['audioFile'] as AudioFile,
                     ),
                   );
                 case '/test-scanner':
@@ -167,27 +162,62 @@ class VoiceBookApp extends StatelessWidget {
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
+  /// 打开播放器页面（使用根 Navigator）
+  static void openPlayer(BuildContext context, {Book? book, required AudioFile audioFile}) {
+    Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute(
+        builder: (_) => PlayerScreen(book: book, audioFile: audioFile),
+      ),
+    );
+  }
+
   @override
   State<MainScreen> createState() => _MainScreenState();
 }
 
 class _MainScreenState extends State<MainScreen> {
-  int _currentIndex = 0;
+  int _currentIndex = 1; // 默认进入"正在播放"页面
 
-  // 页面列表
-  final List<Widget> _pages = const [
-    BookListScreen(),
-    SettingsScreen(),
+  // 每个 Tab 的 Navigator Key
+  final List<GlobalKey<NavigatorState>> _navigatorKeys = [
+    GlobalKey<NavigatorState>(),
+    GlobalKey<NavigatorState>(),
+    GlobalKey<NavigatorState>(),
   ];
+
+
+  // 构建带嵌套 Navigator 的 Tab 页面
+  Widget _buildNavigator(int index, Widget child) {
+    return Navigator(
+      key: _navigatorKeys[index],
+      onGenerateRoute: (settings) {
+        return MaterialPageRoute(builder: (_) => child);
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _pages,
-      ),
-      bottomNavigationBar: NavigationBar(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        // 先尝试在当前 Tab 的 Navigator 中返回
+        final navigator = _navigatorKeys[_currentIndex].currentState;
+        if (navigator != null && navigator.canPop()) {
+          navigator.pop();
+        }
+      },
+      child: Scaffold(
+        body: IndexedStack(
+          index: _currentIndex,
+          children: [
+            _buildNavigator(0, BookListScreen(navigatorKey: _navigatorKeys[0])),
+            _buildNavigator(1, const NowPlayingScreen()),
+            _buildNavigator(2, const SettingsScreen()),
+          ],
+        ),
+        bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: (index) {
           setState(() {
@@ -201,12 +231,73 @@ class _MainScreenState extends State<MainScreen> {
             label: '书架',
           ),
           NavigationDestination(
+            icon: Icon(Icons.play_circle_outline),
+            selectedIcon: Icon(Icons.play_circle),
+            label: '正在播放',
+          ),
+          NavigationDestination(
             icon: Icon(Icons.settings_outlined),
             selectedIcon: Icon(Icons.settings),
             label: '设置',
           ),
         ],
+        ),
       ),
+    );
+  }
+}
+
+/// 正在播放页面
+///
+/// 显示当前播放或上次播放的音频
+class NowPlayingScreen extends StatelessWidget {
+  const NowPlayingScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<AudioPlayerProvider>(
+      builder: (context, playerProvider, child) {
+        if (playerProvider.currentAudioFile == null) {
+          return Scaffold(
+            appBar: AppBar(
+              title: const Text('正在播放'),
+            ),
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.music_note,
+                    size: 80,
+                    color: Colors.grey[400],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    '暂无播放内容',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '去书架选择一本书开始播放吧',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[500],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return PlayerScreen(
+          book: null,
+          audioFile: playerProvider.currentAudioFile!,
+        );
+      },
     );
   }
 }
@@ -389,6 +480,17 @@ class SettingsScreen extends StatelessWidget {
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {
                     Navigator.pushNamed(context, '/test-scanner');
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.audio_file),
+                  title: const Text('测试元数据读取'),
+                  subtitle: const Text('选择音频文件查看元数据'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => const MetadataTestScreen(),
+                    ));
                   },
                 ),
                 const SizedBox(height: 8),

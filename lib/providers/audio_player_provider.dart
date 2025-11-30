@@ -1,3 +1,5 @@
+import 'dart:io' as io;
+
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import '../models/audio_file.dart';
@@ -19,6 +21,9 @@ class AudioPlayerProvider extends ChangeNotifier {
   /// 当前播放的音频文件
   AudioFile? _currentAudioFile;
 
+  /// 当前播放的书籍ID
+  int? _currentBookId;
+
   /// 播放状态
   PlayerState _playerState = PlayerState(false, ProcessingState.idle);
 
@@ -39,6 +44,7 @@ class AudioPlayerProvider extends ChangeNotifier {
 
   // Getters
   AudioFile? get currentAudioFile => _currentAudioFile;
+  int? get currentBookId => _currentBookId;
   PlayerState get playerState => _playerState;
   int get position => _position;
   int get duration => _duration;
@@ -57,6 +63,44 @@ class AudioPlayerProvider extends ChangeNotifier {
 
   AudioPlayerProvider() {
     _initializePlayer();
+    _restoreLastPlayback();
+  }
+
+  /// 恢复上次播放的音频（仅恢复状态，不自动播放）
+  Future<void> _restoreLastPlayback() async {
+    try {
+      final db = await _databaseService.database;
+      final result = await db.rawQuery('''
+        SELECT af.*, pp.position, pp.playback_speed, b.id as book_id
+        FROM playback_progress pp
+        JOIN audio_files af ON pp.audio_file_id = af.id
+        JOIN books b ON af.book_id = b.id
+        ORDER BY pp.updated_at DESC
+        LIMIT 1
+      ''');
+
+      if (result.isNotEmpty) {
+        final audioFile = AudioFile.fromMap(result.first);
+        // 验证文件是否存在
+        final file = io.File(audioFile.filePath);
+        if (await file.exists()) {
+          _currentAudioFile = audioFile;
+          _currentBookId = result.first['book_id'] as int?;
+
+          // 加载音频到播放器（但不播放）
+          await _audioPlayer.setFilePath(audioFile.filePath);
+          await _restoreProgress();
+
+          notifyListeners();
+        } else {
+          // 文件不存在，清理无效的播放进度
+          await db.delete('playback_progress', where: 'audio_file_id = ?', whereArgs: [audioFile.id]);
+          debugPrint('上次播放的文件已不存在，已清理记录');
+        }
+      }
+    } catch (e) {
+      debugPrint('恢复上次播放失败: $e');
+    }
   }
 
   /// 初始化播放器
@@ -90,6 +134,10 @@ class AudioPlayerProvider extends ChangeNotifier {
     _audioPlayer.durationStream.listen((duration) {
       if (duration != null) {
         _duration = duration.inMilliseconds;
+        // 如果数据库中时长为0，用播放器获取的时长回写
+        if (_currentAudioFile != null && _currentAudioFile!.duration == 0 && _duration > 0) {
+          _updateAudioFileDuration(_currentAudioFile!.id!, _duration);
+        }
         notifyListeners();
       }
     });
@@ -102,7 +150,7 @@ class AudioPlayerProvider extends ChangeNotifier {
   }
 
   /// 加载并播放音频文件
-  Future<void> loadAndPlay(AudioFile audioFile) async {
+  Future<void> loadAndPlay(AudioFile audioFile, {int? bookId}) async {
     try {
       // 如果是同一个文件，直接播放
       if (_currentAudioFile?.id == audioFile.id) {
@@ -115,13 +163,19 @@ class AudioPlayerProvider extends ChangeNotifier {
       _errorMessage = null;
       notifyListeners();
 
-      // 停止当前播放
-      await stop();
+      // 保存当前进度后再停止（不使用 stop，直接暂停并重置）
+      await _saveProgress();
 
-      // 设置当前音频文件
+      // 设置当前音频文件和书籍ID
       _currentAudioFile = audioFile;
+      _currentBookId = bookId ?? audioFile.bookId;
 
-      // 加载音频文件
+      // 更新书籍的当前音频文件ID
+      if (_currentBookId != null) {
+        await _updateBookCurrentAudio(_currentBookId!, audioFile.id!);
+      }
+
+      // 使用 setAudioSource 替代 setFilePath，并设置初始位置
       await _audioPlayer.setFilePath(audioFile.filePath);
 
       // 恢复播放进度
@@ -129,6 +183,9 @@ class AudioPlayerProvider extends ChangeNotifier {
 
       // 开始播放
       await play();
+    } on PlayerInterruptedException {
+      // 加载被中断（用户快速切换），忽略此错误
+      debugPrint('音频加载被中断，用户切换了音频');
     } catch (e) {
       _errorMessage = '加载音频文件失败: $e';
       debugPrint(_errorMessage);
@@ -138,10 +195,32 @@ class AudioPlayerProvider extends ChangeNotifier {
     }
   }
 
+  /// 更新书籍的当前音频文件ID
+  Future<void> _updateBookCurrentAudio(int bookId, int audioFileId) async {
+    try {
+      final db = await _databaseService.database;
+      await db.update(
+        'books',
+        {'current_audio_file_id': audioFileId, 'updated_at': DateTime.now().millisecondsSinceEpoch},
+        where: 'id = ?',
+        whereArgs: [bookId],
+      );
+    } catch (e) {
+      debugPrint('更新书籍当前音频失败: $e');
+    }
+  }
+
   /// 播放
   Future<void> play() async {
+    // 检查播放器是否已加载音频
+    if (_playerState.processingState == ProcessingState.idle) {
+      debugPrint('播放器未加载音频，忽略播放请求');
+      return;
+    }
     try {
       await _audioPlayer.play();
+    } on PlayerInterruptedException {
+      // 忽略中断异常
     } catch (e) {
       _errorMessage = '播放失败: $e';
       debugPrint(_errorMessage);
@@ -151,9 +230,15 @@ class AudioPlayerProvider extends ChangeNotifier {
 
   /// 暂停
   Future<void> pause() async {
+    // 检查播放器是否已加载音频
+    if (_playerState.processingState == ProcessingState.idle) {
+      return;
+    }
     try {
       await _audioPlayer.pause();
       await _saveProgress();
+    } on PlayerInterruptedException {
+      // 忽略中断异常
     } catch (e) {
       _errorMessage = '暂停失败: $e';
       debugPrint(_errorMessage);
@@ -166,6 +251,8 @@ class AudioPlayerProvider extends ChangeNotifier {
     try {
       await _audioPlayer.stop();
       await _saveProgress();
+    } on PlayerInterruptedException {
+      // 忽略中断异常
     } catch (e) {
       _errorMessage = '停止失败: $e';
       debugPrint(_errorMessage);
@@ -261,6 +348,16 @@ class AudioPlayerProvider extends ChangeNotifier {
   void clearError() {
     _errorMessage = null;
     notifyListeners();
+  }
+
+  /// 更新音频文件时长到数据库
+  Future<void> _updateAudioFileDuration(int audioFileId, int duration) async {
+    try {
+      final db = await _databaseService.database;
+      await db.update('audio_files', {'duration': duration}, where: 'id = ?', whereArgs: [audioFileId]);
+    } catch (e) {
+      debugPrint('更新音频时长失败: $e');
+    }
   }
 
   @override

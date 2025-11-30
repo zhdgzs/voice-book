@@ -11,12 +11,12 @@ import '../utils/helpers.dart';
 ///
 /// 显示当前播放的音频文件信息和播放控制
 class PlayerScreen extends StatefulWidget {
-  final Book book;
+  final Book? book;
   final AudioFile audioFile;
 
   const PlayerScreen({
     super.key,
-    required this.book,
+    this.book,
     required this.audioFile,
   });
 
@@ -31,10 +31,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void initState() {
     super.initState();
-    // 加载并播放音频文件
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final audioPlayer = context.read<AudioPlayerProvider>();
-      audioPlayer.loadAndPlay(widget.audioFile);
+      // 避免重复加载同一音频
+      if (audioPlayer.currentAudioFile?.id != widget.audioFile.id) {
+        audioPlayer.loadAndPlay(widget.audioFile, bookId: widget.book?.id);
+      }
     });
   }
 
@@ -148,6 +150,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   /// 构建音频信息
   Widget _buildAudioInfo(BuildContext context, AudioFile currentAudio) {
+    final audioPlayer = context.watch<AudioPlayerProvider>();
+    final bookProvider = context.watch<BookProvider>();
+
+    // 优先使用传入的 book，否则根据 currentBookId 查找
+    final book = widget.book ??
+        (audioPlayer.currentBookId != null
+            ? bookProvider.books.where((b) => b.id == audioPlayer.currentBookId).firstOrNull
+            : null);
+
     return Column(
       children: [
         // 音频文件标题
@@ -164,22 +175,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
         const SizedBox(height: 8),
 
         // 书籍标题
-        Text(
-          widget.book.title,
-          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-          textAlign: TextAlign.center,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
+        if (book != null)
+          Text(
+            book.title,
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
 
         // 作者
-        if (widget.book.author != null && widget.book.author!.isNotEmpty)
+        if (book?.author != null && book!.author!.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 4),
             child: Text(
-              widget.book.author!,
+              book.author!,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
@@ -258,48 +270,43 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// 构建播放控制按钮
   Widget _buildPlaybackControls(
       BuildContext context, AudioPlayerProvider audioPlayer) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        // 快退 10 秒
-        IconButton(
-          icon: const Icon(Icons.replay_10),
-          iconSize: 36,
-          onPressed: () => audioPlayer.seekBackward(10),
-        ),
-
-        const SizedBox(width: 12),
-
-        // 上一曲
-        IconButton(
-          icon: const Icon(Icons.skip_previous),
-          iconSize: 42,
-          onPressed: () => _playPrevious(context),
-        ),
-
-        const SizedBox(width: 12),
-
-        // 播放/暂停按钮
-        _buildPlayPauseButton(context, audioPlayer),
-
-        const SizedBox(width: 12),
-
-        // 下一曲
-        IconButton(
-          icon: const Icon(Icons.skip_next),
-          iconSize: 42,
-          onPressed: () => _playNext(context),
-        ),
-
-        const SizedBox(width: 12),
-
-        // 快进 10 秒
-        IconButton(
-          icon: const Icon(Icons.forward_10),
-          iconSize: 36,
-          onPressed: () => audioPlayer.seekForward(10),
-        ),
-      ],
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // 快退 10 秒
+          IconButton(
+            icon: const Icon(Icons.replay_10),
+            iconSize: 36,
+            onPressed: () => audioPlayer.seekBackward(10),
+          ),
+          const SizedBox(width: 8),
+          // 上一曲
+          IconButton(
+            icon: const Icon(Icons.skip_previous),
+            iconSize: 42,
+            onPressed: () => _playPrevious(context),
+          ),
+          const SizedBox(width: 8),
+          // 播放/暂停按钮
+          _buildPlayPauseButton(context, audioPlayer),
+          const SizedBox(width: 8),
+          // 下一曲
+          IconButton(
+            icon: const Icon(Icons.skip_next),
+            iconSize: 42,
+            onPressed: () => _playNext(context),
+          ),
+          const SizedBox(width: 8),
+          // 快进 10 秒
+          IconButton(
+            icon: const Icon(Icons.forward_10),
+            iconSize: 36,
+            onPressed: () => audioPlayer.seekForward(10),
+          ),
+        ],
+      ),
     );
   }
 
@@ -482,6 +489,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   /// 显示播放列表
   void _showPlaylist(BuildContext context) {
+    if (widget.book == null) return;
+
     final bookProvider = context.read<BookProvider>();
     final audioPlayer = context.read<AudioPlayerProvider>();
 
@@ -497,7 +506,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           builder: (context, scrollController) {
             return FutureBuilder<List<AudioFile>>(
               future: bookProvider.databaseService
-                  .getAudioFilesByBookId(widget.book.id!)
+                  .getAudioFilesByBookId(widget.book!.id!)
                   .then((maps) => maps.map((map) => AudioFile.fromMap(map)).toList()),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
@@ -637,13 +646,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
+  /// 获取当前书籍ID
+  int? _getBookId(AudioPlayerProvider audioPlayer) {
+    return widget.book?.id ?? audioPlayer.currentBookId;
+  }
+
   /// 播放上一曲
   void _playPrevious(BuildContext context) async {
     final bookProvider = context.read<BookProvider>();
     final audioPlayer = context.read<AudioPlayerProvider>();
+    final bookId = _getBookId(audioPlayer);
+
+    if (bookId == null) return;
 
     final audioFileMaps =
-        await bookProvider.databaseService.getAudioFilesByBookId(widget.book.id!);
+        await bookProvider.databaseService.getAudioFilesByBookId(bookId);
     final audioFiles = audioFileMaps.map((map) => AudioFile.fromMap(map)).toList();
 
     if (audioFiles.isEmpty) return;
@@ -653,7 +670,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
 
     if (currentIndex > 0) {
-      audioPlayer.loadAndPlay(audioFiles[currentIndex - 1]);
+      audioPlayer.loadAndPlay(audioFiles[currentIndex - 1], bookId: bookId);
     } else {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -667,9 +684,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _playNext(BuildContext context) async {
     final bookProvider = context.read<BookProvider>();
     final audioPlayer = context.read<AudioPlayerProvider>();
+    final bookId = _getBookId(audioPlayer);
+
+    if (bookId == null) return;
 
     final audioFileMaps =
-        await bookProvider.databaseService.getAudioFilesByBookId(widget.book.id!);
+        await bookProvider.databaseService.getAudioFilesByBookId(bookId);
     final audioFiles = audioFileMaps.map((map) => AudioFile.fromMap(map)).toList();
 
     if (audioFiles.isEmpty) return;
@@ -679,7 +699,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
 
     if (currentIndex < audioFiles.length - 1) {
-      audioPlayer.loadAndPlay(audioFiles[currentIndex + 1]);
+      audioPlayer.loadAndPlay(audioFiles[currentIndex + 1], bookId: bookId);
     } else {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

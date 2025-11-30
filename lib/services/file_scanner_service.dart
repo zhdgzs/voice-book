@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'audio_metadata_service.dart';
@@ -46,7 +47,6 @@ class FileScannerService {
     bool recursive = true,
     void Function(int scannedCount)? onProgress,
   }) async {
-    final List<File> audioFiles = [];
     final directory = Directory(directoryPath);
 
     // 检查目录是否存在
@@ -55,26 +55,33 @@ class FileScannerService {
     }
 
     try {
-      // 获取目录中的所有文件和子目录
-      final entities = directory.listSync(recursive: recursive);
+      // 在独立 isolate 中执行扫描，避免阻塞 UI
+      final audioPaths = await compute(
+        _scanDirectoryIsolate,
+        _ScanParams(directoryPath, recursive, supportedExtensions),
+      );
 
-      for (final entity in entities) {
-        // 只处理文件
-        if (entity is File) {
-          // 检查是否为支持的音频格式
-          if (_isSupportedAudioFile(entity.path)) {
-            audioFiles.add(entity);
-
-            // 调用进度回调
-            onProgress?.call(audioFiles.length);
-          }
+      // 分批转换为 File 对象，避免阻塞 UI
+      final audioFiles = <File>[];
+      const batchSize = 100;
+      for (int i = 0; i < audioPaths.length; i += batchSize) {
+        final end = (i + batchSize < audioPaths.length) ? i + batchSize : audioPaths.length;
+        for (int j = i; j < end; j++) {
+          audioFiles.add(File(audioPaths[j]));
+        }
+        // 每批处理后让出主线程
+        if (end < audioPaths.length) {
+          await Future.delayed(Duration.zero);
         }
       }
+
+      // 调用进度回调（扫描完成）
+      onProgress?.call(audioFiles.length);
+
+      return audioFiles;
     } catch (e) {
       throw Exception('扫描目录失败: $e');
     }
-
-    return audioFiles;
   }
 
   /// 扫描多个目录
@@ -329,4 +336,37 @@ class FileScannerService {
 
     return totalDuration;
   }
+}
+
+/// isolate 扫描参数
+class _ScanParams {
+  final String directoryPath;
+  final bool recursive;
+  final List<String> extensions;
+
+  _ScanParams(this.directoryPath, this.recursive, this.extensions);
+}
+
+/// isolate 中执行的扫描函数（顶层函数）
+List<String> _scanDirectoryIsolate(_ScanParams params) {
+  final List<String> audioPaths = [];
+  final directory = Directory(params.directoryPath);
+  final entities = directory.listSync(recursive: params.recursive);
+
+  for (final entity in entities) {
+    if (entity is File) {
+      final ext = entity.path.toLowerCase();
+      for (final supportedExt in params.extensions) {
+        if (ext.endsWith(supportedExt)) {
+          audioPaths.add(entity.path);
+          break;
+        }
+      }
+    }
+  }
+
+  // 在 isolate 中排序
+  audioPaths.sort();
+
+  return audioPaths;
 }

@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import '../providers/book_provider.dart';
 import '../models/book.dart';
 import '../utils/helpers.dart';
+import '../widgets/mini_player.dart';
+import 'book_detail_screen.dart';
 
 /// 书籍列表页面
 ///
@@ -13,7 +15,9 @@ import '../utils/helpers.dart';
 /// - 跳转到书籍详情
 /// - 导入新书籍
 class BookListScreen extends StatefulWidget {
-  const BookListScreen({super.key});
+  final GlobalKey<NavigatorState>? navigatorKey;
+
+  const BookListScreen({super.key, this.navigatorKey});
 
   @override
   State<BookListScreen> createState() => _BookListScreenState();
@@ -98,7 +102,9 @@ class _BookListScreenState extends State<BookListScreen> {
           ),
         ],
       ),
-      body: Column(
+      body: Stack(
+        children: [
+          Column(
         children: [
           // 搜索栏
           Padding(
@@ -232,14 +238,25 @@ class _BookListScreenState extends State<BookListScreen> {
             ),
           ),
         ],
+          ),
+          // 迷你播放器
+          const Positioned(
+            right: 0,
+            bottom: 0,
+            child: MiniPlayer(),
+          ),
+        ],
       ),
-      // 浮动按钮 - 导入书籍
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          Navigator.pushNamed(context, '/file-import');
-        },
-        icon: const Icon(Icons.add),
-        label: const Text('导入书籍'),
+      // 浮动按钮 - 导入书籍（避开迷你播放器）
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 72),
+        child: FloatingActionButton.extended(
+          onPressed: () {
+            Navigator.of(context, rootNavigator: true).pushNamed('/file-import');
+          },
+          icon: const Icon(Icons.add),
+          label: const Text('导入书籍'),
+        ),
       ),
     );
   }
@@ -251,10 +268,9 @@ class _BookListScreenState extends State<BookListScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
         onTap: () {
-          Navigator.pushNamed(
-            context,
-            '/book-detail',
-            arguments: book,
+          final navigator = widget.navigatorKey?.currentState ?? Navigator.of(context);
+          navigator.push(
+            MaterialPageRoute(builder: (_) => BookDetailScreen(book: book)),
           );
         },
         borderRadius: BorderRadius.circular(12),

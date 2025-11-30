@@ -19,7 +19,9 @@
       "Bash(where:*)",
       "Bash(cat:*)",
       "Bash(flutter analyze:*)",
-      "Bash(git diff:*)"
+      "Bash(git diff:*)",
+      "Bash(flutter devices:*)",
+      "Bash(flutter run:*)"
     ],
     "deny": [],
     "ask": []

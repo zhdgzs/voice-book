@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:audio_metadata_reader/audio_metadata_reader.dart' as meta;
 import '../models/book.dart';
 import '../models/audio_file.dart';
 import '../services/database_service.dart';
@@ -56,6 +58,9 @@ class BookProvider extends ChangeNotifier {
       );
 
       _books = maps.map((map) => Book.fromMap(map)).toList();
+
+      // 后台补全缺失的音频时长（不等待，避免阻塞）
+      _updateMissingDurations();
     } catch (e) {
       _errorMessage = '加载书籍失败: $e';
       debugPrint(_errorMessage);
@@ -218,4 +223,68 @@ class BookProvider extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
   }
+
+  /// 后台补全缺失的音频时长（duration=0 的记录）
+  Future<void> _updateMissingDurations() async {
+    try {
+      final db = await _databaseService.database;
+
+      // 查找所有 duration=0 的音频文件
+      final rows = await db.query('audio_files', where: 'duration = 0');
+      if (rows.isEmpty) return;
+
+      // 在隔离线程中批量读取时长
+      final filePaths = rows.map((r) => r['file_path'] as String).toList();
+      final durations = await compute(_readDurationsInIsolate, filePaths);
+
+      // 按书籍分组统计
+      final Map<int, int> bookDurations = {};
+
+      for (int i = 0; i < rows.length; i++) {
+        final id = rows[i]['id'] as int;
+        final bookId = rows[i]['book_id'] as int;
+        final duration = durations[i];
+
+        if (duration > 0) {
+          await db.update('audio_files', {'duration': duration}, where: 'id = ?', whereArgs: [id]);
+          bookDurations[bookId] = (bookDurations[bookId] ?? 0) + duration;
+        }
+      }
+
+      // 更新受影响书籍的总时长
+      for (final entry in bookDurations.entries) {
+        final totalResult = await db.rawQuery(
+          'SELECT SUM(duration) as total FROM audio_files WHERE book_id = ?',
+          [entry.key],
+        );
+        final total = totalResult.first['total'] as int? ?? 0;
+        await db.update('books', {'total_duration': total}, where: 'id = ?', whereArgs: [entry.key]);
+      }
+
+      // 刷新数据（直接查询，避免递归调用 loadBooks）
+      if (bookDurations.isNotEmpty) {
+        final bookMaps = await db.query('books', orderBy: 'updated_at DESC');
+        _books = bookMaps.map((map) => Book.fromMap(map)).toList();
+
+        if (_currentBook != null && bookDurations.containsKey(_currentBook!.id)) {
+          await loadAudioFilesForBook(_currentBook!.id!);
+        }
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('补全音频时长失败: $e');
+    }
+  }
+}
+
+/// 在隔离线程中读取音频时长（顶层函数）
+List<int> _readDurationsInIsolate(List<String> filePaths) {
+  return filePaths.map((path) {
+    try {
+      final metadata = meta.readMetadata(File(path), getImage: false);
+      return metadata.duration?.inMilliseconds ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }).toList();
 }

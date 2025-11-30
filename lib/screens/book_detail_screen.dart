@@ -3,7 +3,10 @@ import 'package:provider/provider.dart';
 import '../models/book.dart';
 import '../models/audio_file.dart';
 import '../providers/book_provider.dart';
+import '../providers/audio_player_provider.dart';
 import '../utils/helpers.dart';
+import '../widgets/mini_player.dart';
+import '../main.dart';
 
 /// 书籍详情页面
 ///
@@ -24,13 +27,45 @@ class BookDetailScreen extends StatefulWidget {
 }
 
 class _BookDetailScreenState extends State<BookDetailScreen> {
+  final ScrollController _scrollController = ScrollController();
+
   @override
   void initState() {
     super.initState();
-    // 加载书籍的音频文件列表
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<BookProvider>().setCurrentBook(widget.book);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await context.read<BookProvider>().setCurrentBook(widget.book);
+      if (mounted) _scrollToCurrentAudio();
     });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  /// 滚动到当前播放的音频（基于索引计算）
+  void _scrollToCurrentAudio() {
+    final playerProvider = context.read<AudioPlayerProvider>();
+    final bookProvider = context.read<BookProvider>();
+    final currentAudioId = playerProvider.currentAudioFile?.id;
+
+    if (currentAudioId == null) return;
+
+    final index = bookProvider.currentBookAudioFiles
+        .indexWhere((f) => f.id == currentAudioId);
+    if (index <= 0) return;
+
+    // itemExtent 固定为 72
+    const itemHeight = 72.0;
+    final maxOffset = _scrollController.position.maxScrollExtent;
+    final targetOffset = (index * itemHeight).clamp(0.0, maxOffset);
+
+    _scrollController.animateTo(
+      targetOffset,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
   }
 
   /// 显示删除确认对话框
@@ -150,7 +185,10 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: CustomScrollView(
+      body: Stack(
+        children: [
+          CustomScrollView(
+        controller: _scrollController,
         slivers: [
           // 顶部应用栏
           SliverAppBar(
@@ -350,11 +388,11 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                 );
               }
 
-              return SliverList(
+              return SliverFixedExtentList(
+                itemExtent: 72,
                 delegate: SliverChildBuilderDelegate(
                   (context, index) {
-                    final audioFile = audioFiles[index];
-                    return _buildAudioFileItem(audioFile, index);
+                    return _buildAudioFileItem(audioFiles[index], index);
                   },
                   childCount: audioFiles.length,
                 ),
@@ -363,12 +401,13 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
           ),
         ],
       ),
-
-      // 播放按钮
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _playFirstAudio(),
-        icon: const Icon(Icons.play_arrow),
-        label: const Text('播放'),
+      // 迷你播放器
+      Positioned(
+        right: 0,
+        bottom: 0,
+        child: MiniPlayer(),
+      ),
+    ],
       ),
     );
   }
@@ -411,65 +450,65 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
 
   /// 构建音频文件项
   Widget _buildAudioFileItem(AudioFile audioFile, int index) {
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-        child: Text(
-          '${index + 1}',
-          style: TextStyle(
-            color: Theme.of(context).colorScheme.onPrimaryContainer,
-            fontWeight: FontWeight.bold,
+    return Consumer<AudioPlayerProvider>(
+      builder: (context, playerProvider, child) {
+        final isCurrentAudio = playerProvider.currentAudioFile?.id == audioFile.id;
+
+        return Container(
+          color: isCurrentAudio ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3) : null,
+          child: ListTile(
+            leading: CircleAvatar(
+              backgroundColor: isCurrentAudio
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.primaryContainer,
+              child: isCurrentAudio
+                ? Icon(Icons.play_arrow, color: Theme.of(context).colorScheme.onPrimary)
+                : Text(
+                    '${index + 1}',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+            ),
+            title: Text(
+              audioFile.fileName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontWeight: isCurrentAudio ? FontWeight.bold : null,
+              ),
+            ),
+            subtitle: Text(
+              '${audioFile.formattedDuration} • ${audioFile.formattedFileSize}',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+              ),
+            ),
+            trailing: IconButton(
+              icon: Icon(isCurrentAudio ? Icons.pause_circle : Icons.play_circle_outline),
+              onPressed: () {
+                final audioPlayer = context.read<AudioPlayerProvider>();
+                if (isCurrentAudio && audioPlayer.isPlaying) {
+                  audioPlayer.pause();
+                } else {
+                  audioPlayer.loadAndPlay(audioFile, bookId: widget.book.id);
+                }
+              },
+            ),
+            onTap: () {
+              // 直接打开播放器，由 PlayerScreen 负责加载
+              MainScreen.openPlayer(
+                context,
+                book: widget.book,
+                audioFile: audioFile,
+              );
+            },
           ),
-        ),
-      ),
-      title: Text(
-        audioFile.fileName,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitle: Text(
-        '${audioFile.formattedDuration} • ${audioFile.formattedFileSize}',
-        style: TextStyle(
-          fontSize: 12,
-          color: Colors.grey[600],
-        ),
-      ),
-      trailing: IconButton(
-        icon: const Icon(Icons.play_circle_outline),
-        onPressed: () => _playAudio(audioFile),
-      ),
-      onTap: () => _playAudio(audioFile),
-    );
-  }
-
-  /// 播放第一个音频文件
-  Future<void> _playFirstAudio() async {
-    final bookProvider = context.read<BookProvider>();
-    final audioFileMaps = await bookProvider.databaseService
-        .getAudioFilesByBookId(widget.book.id!);
-    final audioFiles = audioFileMaps.map((map) => AudioFile.fromMap(map)).toList();
-
-    if (audioFiles.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('该书籍没有音频文件')),
         );
-      }
-      return;
-    }
-
-    _playAudio(audioFiles.first);
-  }
-
-  /// 播放指定的音频文件
-  void _playAudio(AudioFile audioFile) {
-    Navigator.pushNamed(
-      context,
-      '/player',
-      arguments: {
-        'book': widget.book,
-        'audioFile': audioFile,
       },
     );
   }
+
 }

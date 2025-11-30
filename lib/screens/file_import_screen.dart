@@ -110,8 +110,10 @@ class _FileImportScreenState extends State<FileImportScreen> {
           _scannedFiles.clear();
         });
 
-        // 自动开始扫描
-        await _scanFolder();
+        // 等待下一帧让 UI 刷新显示 loading，然后开始扫描
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _scanFolder();
+        });
       }
     } catch (e) {
       setState(() {
@@ -146,9 +148,6 @@ class _FileImportScreenState extends State<FileImportScreen> {
           });
         },
       );
-
-      // 按文件名排序
-      files.sort((a, b) => a.path.compareTo(b.path));
 
       setState(() {
         _scannedFiles = files;
@@ -198,15 +197,31 @@ class _FileImportScreenState extends State<FileImportScreen> {
 
     setState(() {
       _isScanning = true;
-      _statusMessage = '正在导入书籍...';
+      _statusMessage = '正在读取音频信息 (0/${_scannedFiles.length})...';
     });
 
     try {
       final bookProvider = context.read<BookProvider>();
 
-      // 计算总时长（简单估算，不读取元数据以避免卡顿）
-      // 实际时长将在后台异步更新
-      final totalDuration = 0;
+      // 读取所有音频文件的元数据
+      final metadataList = await _scannerService.readMultipleMetadata(
+        _scannedFiles,
+        onProgress: (current, total) {
+          setState(() {
+            _statusMessage = '正在读取音频信息 ($current/$total)...';
+          });
+        },
+      );
+
+      // 计算总时长
+      int totalDuration = 0;
+      for (final metadata in metadataList) {
+        totalDuration += metadata.duration ?? 0;
+      }
+
+      setState(() {
+        _statusMessage = '正在创建书籍...';
+      });
 
       // 创建书籍
       final book = Book(
@@ -224,22 +239,24 @@ class _FileImportScreenState extends State<FileImportScreen> {
         throw Exception('创建书籍失败');
       }
 
-      // 创建音频文件记录（不读取元数据，快速导入）
+      // 创建音频文件记录（使用已读取的元数据）
       final db = await bookProvider.databaseService.database;
       for (int i = 0; i < _scannedFiles.length; i++) {
-        final file = _scannedFiles[i];
+        final metadata = metadataList[i];
         final audioFile = AudioFile(
           bookId: createdBook.id!,
-          filePath: file.path,
-          fileName: file.path.split(Platform.pathSeparator).last,
-          fileSize: await file.length(),
-          duration: 0, // 暂时设为0，后续可以异步更新
+          filePath: metadata.filePath,
+          fileName: metadata.fileName,
+          fileSize: metadata.fileSize,
+          duration: metadata.duration ?? 0,
           sortOrder: i,
           createdAt: DateTime.now().millisecondsSinceEpoch,
         );
-
         await db.insert('audio_files', audioFile.toMap());
       }
+
+      // 刷新书籍列表（会自动触发后台补全时长）
+      await bookProvider.loadBooks();
 
       setState(() {
         _statusMessage = '导入完成！';
@@ -464,72 +481,6 @@ class _FileImportScreenState extends State<FileImportScreen> {
                 ),
               ],
 
-              // 文件列表
-              if (_scannedFiles.isNotEmpty) ...[
-                const SizedBox(height: 24),
-                Text(
-                  '音频文件列表',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
-                const SizedBox(height: 8),
-                Card(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: _scannedFiles.length,
-                    separatorBuilder: (context, index) => const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final file = _scannedFiles[index];
-                      final fileName =
-                          file.path.split(Platform.pathSeparator).last;
-
-                      return ListTile(
-                        dense: true,
-                        leading: CircleAvatar(
-                          backgroundColor:
-                              Theme.of(context).colorScheme.primaryContainer,
-                          child: Text(
-                            '${index + 1}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onPrimaryContainer,
-                            ),
-                          ),
-                        ),
-                        title: Text(
-                          fileName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 14),
-                        ),
-                        subtitle: FutureBuilder<int>(
-                          future: file.length(),
-                          builder: (context, snapshot) {
-                            if (snapshot.hasData) {
-                              final size = snapshot.data!;
-                              final sizeStr = size < 1024 * 1024
-                                  ? '${(size / 1024).toStringAsFixed(1)} KB'
-                                  : '${(size / (1024 * 1024)).toStringAsFixed(1)} MB';
-                              return Text(
-                                sizeStr,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[600],
-                                ),
-                              );
-                            }
-                            return const Text('');
-                          },
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
 
               // 使用说明
               if (_selectedFolderPath == null && _hasPermission) ...[
@@ -577,8 +528,7 @@ class _FileImportScreenState extends State<FileImportScreen> {
                         Text(
                           '提示：\n'
                           '• 递归扫描：会扫描选中文件夹及其所有子文件夹（推荐）\n'
-                          '• 非递归扫描：仅扫描选中文件夹，不包含子文件夹\n'
-                          '• 导入时不读取元数据，确保快速导入',
+                          '• 非递归扫描：仅扫描选中文件夹，不包含子文件夹',
                           style:
                               Theme.of(context).textTheme.bodySmall?.copyWith(
                                     color: Colors.grey[600],

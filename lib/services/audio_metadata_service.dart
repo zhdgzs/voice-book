@@ -1,6 +1,6 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:audio_metadata_reader/audio_metadata_reader.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 
 /// 音频元数据模型
@@ -149,161 +149,120 @@ class AudioMetadataService {
   ///
   /// [files] 音频文件列表
   /// [onProgress] 进度回调，参数为已处理的文件数量和总文件数量
+  /// [batchSize] 每批处理的文件数，默认 20
   ///
   /// 返回包含元数据的 AudioMetadata 列表
-  /// 适合批量扫描场景，跳过封面图片读取
   Future<List<AudioMetadata>> readMultipleMetadataQuick(
     List<File> files, {
     void Function(int current, int total)? onProgress,
+    int batchSize = 20,
   }) async {
-    final List<AudioMetadata> metadataList = [];
-
-    for (int i = 0; i < files.length; i++) {
-      try {
-        final metadata = await readMetadataQuick(files[i]);
-        metadataList.add(metadata);
-
-        // 调用进度回调
-        onProgress?.call(i + 1, files.length);
-      } catch (e) {
-        print('读取元数据失败: ${files[i].path}, 错误: $e');
-        // 即使失败也添加基本信息
-        metadataList.add(await _createFallbackMetadata(files[i]));
-      }
-    }
-
-    return metadataList;
+    return _readMultipleInBatches(files, loadCover: false, onProgress: onProgress, batchSize: batchSize);
   }
 
   /// 批量读取音频文件元数据（完整模式）
   ///
   /// [files] 音频文件列表
   /// [onProgress] 进度回调，参数为已处理的文件数量和总文件数量
+  /// [batchSize] 每批处理的文件数，默认 20
   ///
   /// 返回包含完整元数据的 AudioMetadata 列表，包括封面图片
   Future<List<AudioMetadata>> readMultipleMetadataFull(
     List<File> files, {
     void Function(int current, int total)? onProgress,
+    int batchSize = 20,
   }) async {
-    final List<AudioMetadata> metadataList = [];
+    return _readMultipleInBatches(files, loadCover: true, onProgress: onProgress, batchSize: batchSize);
+  }
 
-    for (int i = 0; i < files.length; i++) {
-      try {
-        final metadata = await readMetadataFull(files[i]);
-        metadataList.add(metadata);
+  /// 快速获取文件基本信息（不读取元数据，避免卡死）
+  Future<List<AudioMetadata>> _readMultipleInBatches(
+    List<File> files, {
+    required bool loadCover,
+    void Function(int current, int total)? onProgress,
+    int batchSize = 10,
+  }) async {
+    if (files.isEmpty) return [];
 
-        // 调用进度回调
-        onProgress?.call(i + 1, files.length);
-      } catch (e) {
-        print('读取元数据失败: ${files[i].path}, 错误: $e');
-        // 即使失败也添加基本信息
-        metadataList.add(await _createFallbackMetadata(files[i]));
+    final List<AudioMetadata> allResults = [];
+    final total = files.length;
+
+    for (int i = 0; i < total; i++) {
+      final file = files[i];
+      final fileSize = file.existsSync() ? file.lengthSync() : 0;
+      allResults.add(AudioMetadata(
+        filePath: file.path,
+        fileName: path.basename(file.path),
+        fileSize: fileSize,
+      ));
+
+      // 每 20 个文件更新一次进度
+      if (i % 20 == 0) {
+        onProgress?.call(i + 1, total);
+        await Future.delayed(Duration.zero);
       }
     }
 
-    return metadataList;
+    onProgress?.call(total, total);
+    return allResults;
   }
 
-  /// 内部方法：读取音频文件元数据
-  ///
-  /// [file] 音频文件
-  /// [loadCover] 是否加载封面图片
-  ///
-  /// 返回 AudioMetadata 对象
+  /// 读取单个文件元数据（用于详情页等场景）
   Future<AudioMetadata> _readMetadataInternal(File file, {required bool loadCover}) async {
     try {
-      // 使用 audio_metadata_reader 读取元数据
-      // getImage: false 可以大幅提升读取速度（10倍+）
-      final metadata = readMetadata(file, getImage: loadCover);
-
-      // 提取封面图片
-      Uint8List? coverImage;
-      if (loadCover && metadata.pictures != null && metadata.pictures!.isNotEmpty) {
-        coverImage = metadata.pictures!.first.bytes;
-      }
-
-      // 获取文件信息
-      final fileSize = await file.length();
-      final fileName = path.basename(file.path);
-
-      return AudioMetadata(
-        title: metadata.title,
-        artist: metadata.artist,
-        album: metadata.album,
-        year: metadata.year,
-        duration: metadata.duration?.inMilliseconds,
-        trackNumber: metadata.trackNumber,
-        genre: metadata.genres?.join(', '),
-        coverImage: coverImage,
-        filePath: file.path,
-        fileName: fileName,
-        fileSize: fileSize,
-      );
+      return _readMetadataSync(file.path, loadCover);
     } catch (e) {
-      print('读取元数据失败: ${file.path}, 错误: $e');
-      // 如果读取失败，返回基本信息
+      debugPrint('读取元数据失败: ${file.path}, 错误: $e');
       return _createFallbackMetadata(file);
     }
   }
 
   /// 创建备用元数据（当读取失败时使用）
-  ///
-  /// [file] 音频文件
-  ///
-  /// 返回包含基本文件信息的 AudioMetadata 对象
   Future<AudioMetadata> _createFallbackMetadata(File file) async {
     final fileSize = await file.length();
     final fileName = path.basename(file.path);
-
     return AudioMetadata(
-      title: null,
-      artist: null,
-      album: null,
-      year: null,
-      duration: null,
-      trackNumber: null,
-      genre: null,
-      coverImage: null,
       filePath: file.path,
       fileName: fileName,
       fileSize: fileSize,
     );
   }
+}
 
-  /// 只读取封面图片
-  ///
-  /// [file] 音频文件
-  ///
-  /// 返回封面图片数据，如果没有封面则返回 null
-  /// 适合已经有基本元数据，只需要补充封面的场景
-  Future<Uint8List?> readCoverOnly(File file) async {
-    try {
-      final metadata = readMetadata(file, getImage: true);
+/// 同步读取单个文件元数据
+AudioMetadata _readMetadataSync(String filePath, bool loadCover) {
+  final file = File(filePath);
+  try {
+    final metadata = readMetadata(file, getImage: loadCover);
 
-      if (metadata.pictures != null && metadata.pictures!.isNotEmpty) {
-        return metadata.pictures!.first.bytes;
-      }
-
-      return null;
-    } catch (e) {
-      print('读取封面失败: ${file.path}, 错误: $e');
-      return null;
+    Uint8List? coverImage;
+    if (loadCover && metadata.pictures.isNotEmpty) {
+      coverImage = metadata.pictures.first.bytes;
     }
-  }
 
-  /// 检查音频文件是否有封面
-  ///
-  /// [file] 音频文件
-  ///
-  /// 返回 true 表示有封面，false 表示没有封面
-  /// 此方法会读取元数据但不加载封面数据，性能较好
-  Future<bool> hasCover(File file) async {
-    try {
-      final metadata = readMetadata(file, getImage: false);
-      return metadata.pictures != null && metadata.pictures!.isNotEmpty;
-    } catch (e) {
-      print('检查封面失败: ${file.path}, 错误: $e');
-      return false;
-    }
+    final fileSize = file.lengthSync();
+    final fileName = path.basename(filePath);
+
+    return AudioMetadata(
+      title: metadata.title,
+      artist: metadata.artist,
+      album: metadata.album,
+      year: metadata.year,
+      duration: metadata.duration?.inMilliseconds,
+      trackNumber: metadata.trackNumber,
+      genre: metadata.genres.join(', '),
+      coverImage: coverImage,
+      filePath: filePath,
+      fileName: fileName,
+      fileSize: fileSize,
+    );
+  } catch (e) {
+    final fileSize = file.existsSync() ? file.lengthSync() : 0;
+    final fileName = path.basename(filePath);
+    return AudioMetadata(
+      filePath: filePath,
+      fileName: fileName,
+      fileSize: fileSize,
+    );
   }
 }
