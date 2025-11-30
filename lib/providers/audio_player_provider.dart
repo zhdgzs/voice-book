@@ -64,6 +64,14 @@ class AudioPlayerProvider extends ChangeNotifier {
     // 监听播放状态变化
     _audioPlayer.playerStateStream.listen((state) {
       _playerState = state;
+
+      // 当播放器准备好或开始播放时，重置加载状态
+      if (state.processingState == ProcessingState.ready ||
+          state.processingState == ProcessingState.completed ||
+          state.playing) {
+        _isLoading = false;
+      }
+
       notifyListeners();
     });
 
@@ -95,16 +103,17 @@ class AudioPlayerProvider extends ChangeNotifier {
 
   /// 加载并播放音频文件
   Future<void> loadAndPlay(AudioFile audioFile) async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-
     try {
       // 如果是同一个文件，直接播放
       if (_currentAudioFile?.id == audioFile.id) {
         await play();
         return;
       }
+
+      // 设置加载状态
+      _isLoading = true;
+      _errorMessage = null;
+      notifyListeners();
 
       // 停止当前播放
       await stop();

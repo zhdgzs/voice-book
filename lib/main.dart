@@ -8,7 +8,9 @@ import 'screens/book_list_screen.dart';
 import 'screens/book_detail_screen.dart';
 import 'screens/file_import_screen.dart';
 import 'screens/file_scanner_test_screen.dart';
+import 'screens/player_screen.dart';
 import 'models/book.dart';
+import 'models/audio_file.dart';
 
 void main() async {
   // 确保 Flutter 绑定初始化
@@ -133,6 +135,16 @@ class VoiceBookApp extends StatelessWidget {
                   final book = settings.arguments as Book;
                   return MaterialPageRoute(
                     builder: (_) => BookDetailScreen(book: book),
+                  );
+                case '/player':
+                  final args = settings.arguments as Map<String, dynamic>;
+                  final book = args['book'] as Book;
+                  final audioFile = args['audioFile'] as AudioFile;
+                  return MaterialPageRoute(
+                    builder: (_) => PlayerScreen(
+                      book: book,
+                      audioFile: audioFile,
+                    ),
                   );
                 case '/test-scanner':
                   return MaterialPageRoute(

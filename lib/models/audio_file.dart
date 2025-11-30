@@ -88,6 +88,15 @@ class AudioFile {
     );
   }
 
+  /// 获取标题（从文件名中提取，去除扩展名）
+  String get title {
+    final lastDot = fileName.lastIndexOf('.');
+    if (lastDot > 0) {
+      return fileName.substring(0, lastDot);
+    }
+    return fileName;
+  }
+
   /// 获取格式化的文件大小
   String get formattedFileSize {
     if (fileSize < 1024) {

@@ -366,12 +366,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
 
       // 播放按钮
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          // TODO: 跳转到播放器页面
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('播放器功能开发中...')),
-          );
-        },
+        onPressed: () => _playFirstAudio(),
         icon: const Icon(Icons.play_arrow),
         label: const Text('播放'),
       ),
@@ -441,18 +436,39 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
       ),
       trailing: IconButton(
         icon: const Icon(Icons.play_circle_outline),
-        onPressed: () {
-          // TODO: 播放此音频文件
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('播放: ${audioFile.fileName}')),
-          );
-        },
+        onPressed: () => _playAudio(audioFile),
       ),
-      onTap: () {
-        // TODO: 播放此音频文件
+      onTap: () => _playAudio(audioFile),
+    );
+  }
+
+  /// 播放第一个音频文件
+  Future<void> _playFirstAudio() async {
+    final bookProvider = context.read<BookProvider>();
+    final audioFileMaps = await bookProvider.databaseService
+        .getAudioFilesByBookId(widget.book.id!);
+    final audioFiles = audioFileMaps.map((map) => AudioFile.fromMap(map)).toList();
+
+    if (audioFiles.isEmpty) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('播放: ${audioFile.fileName}')),
+          const SnackBar(content: Text('该书籍没有音频文件')),
         );
+      }
+      return;
+    }
+
+    _playAudio(audioFiles.first);
+  }
+
+  /// 播放指定的音频文件
+  void _playAudio(AudioFile audioFile) {
+    Navigator.pushNamed(
+      context,
+      '/player',
+      arguments: {
+        'book': widget.book,
+        'audioFile': audioFile,
       },
     );
   }

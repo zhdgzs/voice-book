@@ -138,4 +138,15 @@ class DatabaseService {
     await databaseFactory.deleteDatabase(path);
     _database = null;
   }
+
+  /// 根据书籍 ID 获取音频文件列表
+  Future<List<Map<String, dynamic>>> getAudioFilesByBookId(int bookId) async {
+    final db = await database;
+    return await db.query(
+      'audio_files',
+      where: 'book_id = ?',
+      whereArgs: [bookId],
+      orderBy: 'sort_order ASC, file_name ASC',
+    );
+  }
 }
