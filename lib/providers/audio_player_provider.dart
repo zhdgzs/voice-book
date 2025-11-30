@@ -14,9 +14,13 @@ import 'package:sqflite/sqflite.dart';
 /// - 播放进度管理
 /// - 倍速播放
 /// - 播放进度的保存和恢复
+/// - 跳过开头/结尾
 class AudioPlayerProvider extends ChangeNotifier {
   final AudioPlayer _audioPlayer = AudioPlayer();
   final DatabaseService _databaseService = DatabaseService();
+
+  /// 设置 Provider（用于获取跳过时长配置）
+  dynamic _settingsProvider;
 
   /// 当前播放的音频文件
   AudioFile? _currentAudioFile;
@@ -42,6 +46,9 @@ class AudioPlayerProvider extends ChangeNotifier {
   /// 错误信息
   String? _errorMessage;
 
+  /// 是否已触发播放完成处理（防止重复触发）
+  bool _hasTriggeredCompletion = false;
+
   // Getters
   AudioFile? get currentAudioFile => _currentAudioFile;
   int? get currentBookId => _currentBookId;
@@ -64,6 +71,31 @@ class AudioPlayerProvider extends ChangeNotifier {
   AudioPlayerProvider() {
     _initializePlayer();
     _restoreLastPlayback();
+  }
+
+  /// 设置 SettingsProvider（用于获取跳过时长配置）
+  void setSettingsProvider(dynamic settingsProvider) {
+    _settingsProvider = settingsProvider;
+  }
+
+  /// 获取跳过开头时长（秒）
+  int get _skipStartSeconds {
+    if (_settingsProvider == null) return 0;
+    try {
+      return _settingsProvider.skipStartSeconds as int;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  /// 获取跳过结尾时长（秒）
+  int get _skipEndSeconds {
+    if (_settingsProvider == null) return 0;
+    try {
+      return _settingsProvider.skipEndSeconds as int;
+    } catch (e) {
+      return 0;
+    }
   }
 
   /// 恢复上次播放的音频（仅恢复状态，不自动播放）
@@ -109,11 +141,21 @@ class AudioPlayerProvider extends ChangeNotifier {
     _audioPlayer.playerStateStream.listen((state) {
       _playerState = state;
 
+      // 调试：打印播放状态变化
+      debugPrint('🎵 播放状态变化: ${state.processingState}, playing: ${state.playing}, hasTriggered: $_hasTriggeredCompletion');
+
       // 当播放器准备好或开始播放时，重置加载状态
       if (state.processingState == ProcessingState.ready ||
           state.processingState == ProcessingState.completed ||
           state.playing) {
         _isLoading = false;
+      }
+
+      // 当播放完成时，检查是否需要自动播放下一个
+      if (state.processingState == ProcessingState.completed && !_hasTriggeredCompletion) {
+        debugPrint('✅ 检测到播放完成，准备触发自动播放');
+        _hasTriggeredCompletion = true;
+        _onPlaybackCompleted();
       }
 
       notifyListeners();
@@ -127,6 +169,22 @@ class AudioPlayerProvider extends ChangeNotifier {
       // 每 5 秒自动保存一次进度
       if (_position % 5000 < 100 && _currentAudioFile != null) {
         _saveProgress();
+      }
+
+      // 检查是否接近结尾，需要跳过
+      if (_skipEndSeconds > 0 && _duration > 0 && !_hasTriggeredCompletion) {
+        final remainingMilliseconds = _duration - _position;
+        final skipEndMilliseconds = _skipEndSeconds * 1000;
+
+        // 如果剩余时间小于等于跳过结尾时长，且正在播放，则触发播放完成处理
+        if (remainingMilliseconds <= skipEndMilliseconds && _playerState.playing) {
+          debugPrint('接近结尾 $_skipEndSeconds 秒，触发播放完成处理');
+          _hasTriggeredCompletion = true;
+          // 先暂停当前播放
+          pause();
+          // 触发播放完成处理（会检查是否自动播放下一个）
+          _onPlaybackCompleted();
+        }
       }
     });
 
@@ -158,6 +216,9 @@ class AudioPlayerProvider extends ChangeNotifier {
         return;
       }
 
+      // 重置播放完成标志
+      _hasTriggeredCompletion = false;
+
       // 设置加载状态
       _isLoading = true;
       _errorMessage = null;
@@ -180,6 +241,12 @@ class AudioPlayerProvider extends ChangeNotifier {
 
       // 恢复播放进度
       await _restoreProgress();
+
+      // 应用跳过开头逻辑：如果当前位置在跳过范围内，则跳到跳过开头的位置
+      if (_skipStartSeconds > 0 && _position < _skipStartSeconds * 1000) {
+        debugPrint('跳过开头 ${_skipStartSeconds}秒');
+        await seek(_skipStartSeconds * 1000);
+      }
 
       // 开始播放
       await play();
@@ -357,6 +424,95 @@ class AudioPlayerProvider extends ChangeNotifier {
       await db.update('audio_files', {'duration': duration}, where: 'id = ?', whereArgs: [audioFileId]);
     } catch (e) {
       debugPrint('更新音频时长失败: $e');
+    }
+  }
+
+  /// 播放完成时的处理
+  Future<void> _onPlaybackCompleted() async {
+    debugPrint('========== 音频播放完成 ==========');
+    debugPrint('当前音频: ${_currentAudioFile?.fileName}');
+    debugPrint('当前书籍ID: $_currentBookId');
+
+    // 保存进度
+    await _saveProgress();
+
+    // 检查是否启用自动播放下一个
+    if (_settingsProvider == null) {
+      debugPrint('❌ SettingsProvider 为 null');
+      return;
+    }
+
+    bool autoPlay = false;
+    try {
+      autoPlay = _settingsProvider.autoPlay as bool;
+      debugPrint('自动播放设置: $autoPlay');
+    } catch (e) {
+      debugPrint('❌ 获取自动播放设置失败: $e');
+      return;
+    }
+
+    if (!autoPlay) {
+      debugPrint('⏸️ 自动播放已禁用');
+      return;
+    }
+
+    // 获取下一个音频文件
+    debugPrint('🔍 正在查找下一个音频文件...');
+    final nextAudio = await _getNextAudioFile();
+    if (nextAudio != null) {
+      debugPrint('✅ 找到下一个音频: ${nextAudio.fileName}');
+      debugPrint('🎵 开始自动播放下一个...');
+      await loadAndPlay(nextAudio, bookId: _currentBookId);
+    } else {
+      debugPrint('⚠️ 没有下一个音频文件（已是最后一个）');
+    }
+    debugPrint('========================================');
+  }
+
+  /// 获取下一个音频文件
+  Future<AudioFile?> _getNextAudioFile() async {
+    if (_currentAudioFile == null || _currentBookId == null) {
+      debugPrint('❌ 当前音频或书籍ID为空');
+      return null;
+    }
+
+    try {
+      final db = await _databaseService.database;
+      final audioFileMaps = await db.query(
+        'audio_files',
+        where: 'book_id = ?',
+        whereArgs: [_currentBookId],
+        orderBy: 'sort_order ASC, file_name ASC',
+      );
+
+      debugPrint('📚 书籍中共有 ${audioFileMaps.length} 个音频文件');
+
+      if (audioFileMaps.isEmpty) {
+        debugPrint('❌ 书籍中没有音频文件');
+        return null;
+      }
+
+      final audioFiles = audioFileMaps.map((map) => AudioFile.fromMap(map)).toList();
+
+      // 找到当前音频的索引
+      final currentIndex = audioFiles.indexWhere(
+        (audio) => audio.id == _currentAudioFile!.id,
+      );
+
+      debugPrint('📍 当前音频索引: $currentIndex / ${audioFiles.length}');
+
+      // 如果找到当前音频且不是最后一个，返回下一个
+      if (currentIndex >= 0 && currentIndex < audioFiles.length - 1) {
+        final nextAudio = audioFiles[currentIndex + 1];
+        debugPrint('➡️ 下一个音频: ${nextAudio.fileName} (索引: ${currentIndex + 1})');
+        return nextAudio;
+      }
+
+      debugPrint('⚠️ 已是最后一个音频文件');
+      return null;
+    } catch (e) {
+      debugPrint('❌ 获取下一个音频文件失败: $e');
+      return null;
     }
   }
 

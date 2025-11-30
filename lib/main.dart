@@ -39,8 +39,18 @@ class VoiceBookApp extends StatelessWidget {
         ChangeNotifierProvider.value(value: settingsProvider),
         // 书籍管理 Provider
         ChangeNotifierProvider(create: (_) => BookProvider()),
-        // 音频播放器 Provider
-        ChangeNotifierProvider(create: (_) => AudioPlayerProvider()),
+        // 音频播放器 Provider（使用 ProxyProvider 注入 SettingsProvider）
+        ChangeNotifierProxyProvider<SettingsProvider, AudioPlayerProvider>(
+          create: (context) {
+            final audioPlayer = AudioPlayerProvider();
+            audioPlayer.setSettingsProvider(context.read<SettingsProvider>());
+            return audioPlayer;
+          },
+          update: (context, settings, audioPlayer) {
+            audioPlayer?.setSettingsProvider(settings);
+            return audioPlayer ?? AudioPlayerProvider();
+          },
+        ),
       ],
       child: Consumer<SettingsProvider>(
         builder: (context, settings, _) {
@@ -417,6 +427,78 @@ class SettingsScreen extends StatelessWidget {
                           onChanged: (value) {
                             settings.setAutoPlay(value);
                           },
+                        ),
+                        // 跳过开头设置
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text('跳过开头'),
+                                  Text(
+                                    settings.skipStartSeconds == 0
+                                        ? '不跳过'
+                                        : '${settings.skipStartSeconds} 秒',
+                                    style: TextStyle(
+                                      color: Theme.of(context).colorScheme.primary,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Slider(
+                                value: settings.skipStartSeconds.toDouble(),
+                                min: 0,
+                                max: 120,
+                                divisions: 120,
+                                label: settings.skipStartSeconds == 0
+                                    ? '不跳过'
+                                    : '${settings.skipStartSeconds}秒',
+                                onChanged: (value) {
+                                  settings.setSkipStartSeconds(value.toInt());
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                        // 跳过结尾设置
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text('跳过结尾'),
+                                  Text(
+                                    settings.skipEndSeconds == 0
+                                        ? '不跳过'
+                                        : '${settings.skipEndSeconds} 秒',
+                                    style: TextStyle(
+                                      color: Theme.of(context).colorScheme.primary,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Slider(
+                                value: settings.skipEndSeconds.toDouble(),
+                                min: 0,
+                                max: 120,
+                                divisions: 120,
+                                label: settings.skipEndSeconds == 0
+                                    ? '不跳过'
+                                    : '${settings.skipEndSeconds}秒',
+                                onChanged: (value) {
+                                  settings.setSkipEndSeconds(value.toInt());
+                                },
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     );

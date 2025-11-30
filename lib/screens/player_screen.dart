@@ -5,6 +5,7 @@ import '../models/audio_file.dart';
 import '../models/book.dart';
 import '../providers/audio_player_provider.dart';
 import '../providers/book_provider.dart';
+import '../providers/settings_provider.dart';
 import '../utils/helpers.dart';
 
 /// 音频播放器页面
@@ -473,6 +474,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 },
               ),
               ListTile(
+                leading: const Icon(Icons.skip_next_outlined),
+                title: const Text('跳过设置'),
+                subtitle: const Text('设置跳过开头和结尾的时长'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showSkipSettings(context);
+                },
+              ),
+              ListTile(
                 leading: const Icon(Icons.info_outline),
                 title: const Text('音频信息'),
                 onTap: () {
@@ -707,5 +717,115 @@ class _PlayerScreenState extends State<PlayerScreen> {
         );
       }
     }
+  }
+
+  /// 显示跳过设置对话框
+  void _showSkipSettings(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('跳过设置'),
+          content: SingleChildScrollView(
+            child: Consumer<SettingsProvider>(
+              builder: (context, settings, child) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 说明文字
+                    Text(
+                      '自动跳过音频开头和结尾的指定时长，适用于跳过片头片尾广告。',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // 跳过开头设置
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '跳过开头',
+                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                        Text(
+                          settings.skipStartSeconds == 0
+                              ? '不跳过'
+                              : '${settings.skipStartSeconds} 秒',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                color: Theme.of(context).colorScheme.primary,
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Slider(
+                      value: settings.skipStartSeconds.toDouble(),
+                      min: 0,
+                      max: 120,
+                      divisions: 120,
+                      label: settings.skipStartSeconds == 0
+                          ? '不跳过'
+                          : '${settings.skipStartSeconds}秒',
+                      onChanged: (value) {
+                        settings.setSkipStartSeconds(value.toInt());
+                      },
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // 跳过结尾设置
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '跳过结尾',
+                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                        Text(
+                          settings.skipEndSeconds == 0
+                              ? '不跳过'
+                              : '${settings.skipEndSeconds} 秒',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                color: Theme.of(context).colorScheme.primary,
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Slider(
+                      value: settings.skipEndSeconds.toDouble(),
+                      min: 0,
+                      max: 120,
+                      divisions: 120,
+                      label: settings.skipEndSeconds == 0
+                          ? '不跳过'
+                          : '${settings.skipEndSeconds}秒',
+                      onChanged: (value) {
+                        settings.setSkipEndSeconds(value.toInt());
+                      },
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('关闭'),
+            ),
+          ],
+        );
+      },
+    );
   }
 }
