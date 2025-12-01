@@ -102,16 +102,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   /// 构建顶部导航栏
   Widget _buildAppBar(BuildContext context) {
+    // 检查是否可以返回
+    final canPop = Navigator.canPop(context);
+
     return Padding(
       padding: const EdgeInsets.all(8.0),
       child: Row(
         children: [
-          // 返回按钮
-          IconButton(
-            icon: const Icon(Icons.keyboard_arrow_down),
-            iconSize: 32,
-            onPressed: () => Navigator.pop(context),
-          ),
+          // 返回按钮 - 只在可以 pop 时显示
+          if (canPop)
+            IconButton(
+              icon: const Icon(Icons.keyboard_arrow_down),
+              iconSize: 32,
+              onPressed: () => Navigator.pop(context),
+            )
+          else
+            // 占位,保持布局一致
+            const SizedBox(width: 48),
 
           const Spacer(),
 
@@ -384,15 +391,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        // 书签按钮（预留）
+        // 书签按钮
         IconButton(
           icon: const Icon(Icons.bookmark_border),
           iconSize: 26,
-          onPressed: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('书签功能即将推出')),
-            );
-          },
+          onPressed: () => _addBookmark(context),
         ),
 
         // 倍速播放按钮
@@ -875,7 +878,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     if (currentAudio == null) return;
 
-    final position = audioPlayer.position.inMilliseconds;
+    final position = audioPlayer.position;
 
     showDialog(
       context: context,
@@ -913,10 +916,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ),
             TextButton(
               onPressed: () async {
+                // 如果用户没有填写标题，使用"音频文件名 - 时间点"作为默认标题
+                String? finalTitle = title;
+                if (finalTitle == null || finalTitle.trim().isEmpty) {
+                  final timeStr = Helpers.formatDuration(position);
+                  finalTitle = '${currentAudio.title} - $timeStr';
+                }
+
                 final bookmark = Bookmark(
                   audioFileId: currentAudio.id!,
                   position: position,
-                  title: title?.isEmpty == true ? null : title,
+                  title: finalTitle,
                   note: note?.isEmpty == true ? null : note,
                   createdAt: DateTime.now().millisecondsSinceEpoch,
                 );
@@ -951,7 +961,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       builder: (context) => BookmarkListDialog(
         audioFileId: currentAudio.id!,
         onBookmarkTap: (position) {
-          audioPlayer.seek(Duration(milliseconds: position));
+          audioPlayer.seek(position);
         },
       ),
     );

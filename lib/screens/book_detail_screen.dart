@@ -4,16 +4,16 @@ import '../models/book.dart';
 import '../models/audio_file.dart';
 import '../providers/book_provider.dart';
 import '../providers/audio_player_provider.dart';
-import '../utils/helpers.dart';
 import '../widgets/mini_player.dart';
 import '../main.dart';
 
 /// 书籍详情页面
 ///
-/// 显示书籍的详细信息，包括：
-/// - 书籍基本信息（标题、作者、描述、时长）
-/// - 音频文件列表
-/// - 播放、编辑、删除等操作
+/// 显示书籍的音频文件列表，支持：
+/// - 查看所有音频文件
+/// - 播放/暂停音频
+/// - 自动定位到当前播放的音频
+/// - 编辑、删除书籍等操作
 class BookDetailScreen extends StatefulWidget {
   final Book book;
 
@@ -28,13 +28,20 @@ class BookDetailScreen extends StatefulWidget {
 
 class _BookDetailScreenState extends State<BookDetailScreen> {
   final ScrollController _scrollController = ScrollController();
+  int? _lastScrolledAudioId; // 记录上次滚动到的音频ID
+  bool _isInitialized = false; // 标记是否已初始化
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await context.read<BookProvider>().setCurrentBook(widget.book);
-      if (mounted) _scrollToCurrentAudio();
+      _isInitialized = true;
+      if (mounted) {
+        // 延迟一帧，确保列表完全渲染
+        await Future.delayed(const Duration(milliseconds: 100));
+        if (mounted) _scrollToCurrentAudio();
+      }
     });
   }
 
@@ -44,21 +51,99 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     super.dispose();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 只有在初始化完成后才响应依赖变化
+    if (!_isInitialized) return;
+
+    // 每次依赖变化时检查是否需要重新定位
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        final audioPlayerProvider = context.read<AudioPlayerProvider>();
+        final currentAudioId = audioPlayerProvider.currentAudioFile?.id;
+
+        // 如果当前音频ID变化了，重新定位
+        if (currentAudioId != null && currentAudioId != _lastScrolledAudioId) {
+          _scrollToCurrentAudio();
+        }
+      }
+    });
+  }
+
   /// 滚动到当前播放的音频（基于索引计算）
   void _scrollToCurrentAudio() {
     final bookProvider = context.read<BookProvider>();
-    final currentAudioId = widget.book.currentAudioFileId;
+    final audioPlayerProvider = context.read<AudioPlayerProvider>();
 
-    if (currentAudioId == null) return;
+    // 使用 AudioPlayerProvider 的当前音频ID
+    final currentAudioId = audioPlayerProvider.currentAudioFile?.id;
 
-    final index = bookProvider.currentBookAudioFiles
-        .indexWhere((f) => f.id == currentAudioId);
-    if (index <= 0) return;
+    if (currentAudioId == null) {
+      debugPrint('⚠️ 当前音频ID为空，无法定位');
+      return;
+    }
 
+    // 确保音频列表已加载
+    final audioFiles = bookProvider.currentBookAudioFiles;
+    if (audioFiles.isEmpty) {
+      debugPrint('⚠️ 音频列表为空，无法定位');
+      return;
+    }
+
+    final index = audioFiles.indexWhere((f) => f.id == currentAudioId);
+    if (index < 0) {
+      debugPrint('⚠️ 未找到当前音频，ID: $currentAudioId');
+      return;
+    }
+
+    // 如果是第一个音频，不需要滚动
+    if (index == 0) {
+      debugPrint('✅ 当前音频是第一个，无需滚动');
+      _lastScrolledAudioId = currentAudioId;
+      return;
+    }
+
+    // 记录已滚动到的音频ID
+    _lastScrolledAudioId = currentAudioId;
+
+    // 确保 ScrollController 已附加到滚动视图
+    if (!_scrollController.hasClients) {
+      debugPrint('⚠️ ScrollController 未附加，延迟滚动');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _scrollController.hasClients) {
+          _performScroll(index);
+        }
+      });
+      return;
+    }
+
+    _performScroll(index);
+  }
+
+  /// 执行滚动操作
+  void _performScroll(int index) {
     // itemExtent 固定为 72
     const itemHeight = 72.0;
+    final expectedOffset = index * itemHeight;
     final maxOffset = _scrollController.position.maxScrollExtent;
-    final targetOffset = (index * itemHeight).clamp(0.0, maxOffset);
+
+    debugPrint('📍 准备滚动到索引 $index，期望偏移: $expectedOffset, 最大偏移: $maxOffset');
+
+    // 如果最大偏移量明显小于期望偏移量，说明列表还没完全渲染
+    // 延迟重试
+    if (maxOffset < expectedOffset * 0.5 && maxOffset < 1000) {
+      debugPrint('⚠️ 列表未完全渲染，延迟滚动');
+      Future.delayed(const Duration(milliseconds: 200), () {
+        if (mounted && _scrollController.hasClients) {
+          _performScroll(index);
+        }
+      });
+      return;
+    }
+
+    final targetOffset = expectedOffset.clamp(0.0, maxOffset);
+    debugPrint('✅ 执行滚动到索引 $index，目标偏移: $targetOffset');
 
     _scrollController.animateTo(
       targetOffset,
@@ -184,265 +269,113 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Stack(
-        children: [
-          CustomScrollView(
-        controller: _scrollController,
-        slivers: [
-          // 顶部应用栏
-          SliverAppBar(
-            expandedHeight: 200,
-            pinned: true,
-            flexibleSpace: FlexibleSpaceBar(
-              title: Text(
-                widget.book.title,
-                style: const TextStyle(
-                  shadows: [
-                    Shadow(
-                      offset: Offset(0, 1),
-                      blurRadius: 3,
-                      color: Colors.black45,
-                    ),
+      appBar: AppBar(
+        title: Text(widget.book.title),
+        actions: [
+          // 收藏按钮
+          Consumer<BookProvider>(
+            builder: (context, bookProvider, child) {
+              final book = bookProvider.books
+                  .firstWhere((b) => b.id == widget.book.id);
+              return IconButton(
+                icon: Icon(
+                  book.isFavorite ? Icons.favorite : Icons.favorite_border,
+                  color: book.isFavorite ? Colors.red : null,
+                ),
+                onPressed: () {
+                  bookProvider.toggleFavorite(book.id!);
+                },
+              );
+            },
+          ),
+          // 更多菜单
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              switch (value) {
+                case 'edit':
+                  _showEditDialog();
+                  break;
+                case 'delete':
+                  _showDeleteConfirmDialog();
+                  break;
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'edit',
+                child: Row(
+                  children: [
+                    Icon(Icons.edit),
+                    SizedBox(width: 8),
+                    Text('编辑'),
                   ],
                 ),
               ),
-              background: _buildCoverBackground(),
-            ),
-            actions: [
-              // 收藏按钮
-              Consumer<BookProvider>(
-                builder: (context, bookProvider, child) {
-                  final book = bookProvider.books
-                      .firstWhere((b) => b.id == widget.book.id);
-                  return IconButton(
-                    icon: Icon(
-                      book.isFavorite ? Icons.favorite : Icons.favorite_border,
-                      color: book.isFavorite ? Colors.red : null,
-                    ),
-                    onPressed: () {
-                      bookProvider.toggleFavorite(book.id!);
-                    },
-                  );
-                },
-              ),
-              // 更多菜单
-              PopupMenuButton<String>(
-                onSelected: (value) {
-                  switch (value) {
-                    case 'edit':
-                      _showEditDialog();
-                      break;
-                    case 'delete':
-                      _showDeleteConfirmDialog();
-                      break;
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: 'edit',
-                    child: Row(
-                      children: [
-                        Icon(Icons.edit),
-                        SizedBox(width: 8),
-                        Text('编辑'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: Row(
-                      children: [
-                        Icon(Icons.delete, color: Colors.red),
-                        SizedBox(width: 8),
-                        Text('删除', style: TextStyle(color: Colors.red)),
-                      ],
-                    ),
-                  ),
-                ],
+              const PopupMenuItem(
+                value: 'delete',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete, color: Colors.red),
+                    SizedBox(width: 8),
+                    Text('删除', style: TextStyle(color: Colors.red)),
+                  ],
+                ),
               ),
             ],
           ),
-
-          // 书籍信息
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 作者
-                  if (widget.book.author != null) ...[
-                    Row(
-                      children: [
-                        Icon(Icons.person, size: 20, color: Colors.grey[600]),
-                        const SizedBox(width: 8),
-                        Text(
-                          widget.book.author!,
-                          style:
-                              Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    color: Colors.grey[700],
-                                  ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-
-                  // 时长
-                  Row(
-                    children: [
-                      Icon(Icons.access_time, size: 20, color: Colors.grey[600]),
-                      const SizedBox(width: 8),
-                      Text(
-                        '总时长: ${Helpers.formatDuration(widget.book.totalDuration)}',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Colors.grey[700],
-                            ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-
-                  // 更新时间
-                  Row(
-                    children: [
-                      Icon(Icons.update, size: 20, color: Colors.grey[600]),
-                      const SizedBox(width: 8),
-                      Text(
-                        '更新于 ${Helpers.formatRelativeTime(widget.book.updatedAt)}',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Colors.grey[700],
-                            ),
-                      ),
-                    ],
-                  ),
-
-                  // 描述
-                  if (widget.book.description != null) ...[
-                    const SizedBox(height: 16),
-                    const Divider(),
-                    const SizedBox(height: 16),
-                    Text(
-                      '简介',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      widget.book.description!,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ],
-
-                  const SizedBox(height: 16),
-                  const Divider(),
-                  const SizedBox(height: 16),
-
-                  // 音频文件列表标题
-                  Text(
-                    '音频文件',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
+        ],
+      ),
+      body: Stack(
+        children: [
           // 音频文件列表
           Consumer<BookProvider>(
             builder: (context, bookProvider, child) {
               final audioFiles = bookProvider.currentBookAudioFiles;
 
               if (bookProvider.isLoading) {
-                return const SliverFillRemaining(
-                  child: Center(child: CircularProgressIndicator()),
-                );
+                return const Center(child: CircularProgressIndicator());
               }
 
               if (audioFiles.isEmpty) {
-                return SliverFillRemaining(
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.audio_file,
-                          size: 64,
-                          color: Colors.grey[400],
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.audio_file,
+                        size: 64,
+                        color: Colors.grey[400],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        '暂无音频文件',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 16,
                         ),
-                        const SizedBox(height: 16),
-                        Text(
-                          '暂无音频文件',
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 16,
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 );
               }
 
-              return SliverFixedExtentList(
+              return ListView.builder(
+                controller: _scrollController,
                 itemExtent: 72,
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    return _buildAudioFileItem(audioFiles[index], index);
-                  },
-                  childCount: audioFiles.length,
-                ),
+                itemCount: audioFiles.length,
+                itemBuilder: (context, index) {
+                  return _buildAudioFileItem(audioFiles[index], index);
+                },
               );
             },
           ),
+          // 迷你播放器
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: MiniPlayer(),
+          ),
         ],
-      ),
-      // 迷你播放器
-      Positioned(
-        right: 0,
-        bottom: 0,
-        child: MiniPlayer(),
-      ),
-    ],
-      ),
-    );
-  }
-
-  /// 构建封面背景
-  Widget _buildCoverBackground() {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Theme.of(context).colorScheme.primaryContainer,
-            Theme.of(context).colorScheme.primaryContainer.withOpacity(0.8),
-          ],
-        ),
-      ),
-      child: widget.book.coverPath != null
-          ? Image.network(
-              widget.book.coverPath!,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return _buildDefaultCover();
-              },
-            )
-          : _buildDefaultCover(),
-    );
-  }
-
-  /// 构建默认封面
-  Widget _buildDefaultCover() {
-    return Center(
-      child: Icon(
-        Icons.book,
-        size: 80,
-        color: Theme.of(context).colorScheme.onPrimaryContainer.withOpacity(0.5),
       ),
     );
   }
@@ -451,34 +384,36 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
   Widget _buildAudioFileItem(AudioFile audioFile, int index) {
     return Consumer2<AudioPlayerProvider, BookProvider>(
       builder: (context, playerProvider, bookProvider, child) {
-        final isPlaying = playerProvider.currentAudioFile?.id == audioFile.id && playerProvider.isPlaying;
-        final isCurrentAudio = widget.book.currentAudioFileId == audioFile.id;
+        // 判断是否是正在播放的音频
+        final isCurrentPlaying = playerProvider.currentAudioFile?.id == audioFile.id;
+        final isPlaying = isCurrentPlaying && playerProvider.isPlaying;
 
         return Container(
-          color: isCurrentAudio ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3) : null,
+          color: isCurrentPlaying ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3) : null,
           child: ListTile(
             leading: CircleAvatar(
-              backgroundColor: isCurrentAudio
+              backgroundColor: isCurrentPlaying
                 ? Theme.of(context).colorScheme.primary
                 : Theme.of(context).colorScheme.primaryContainer,
-              child: isPlaying
-                ? Icon(Icons.play_arrow, color: Theme.of(context).colorScheme.onPrimary)
-                : isCurrentAudio
-                  ? Icon(Icons.bookmark, color: Theme.of(context).colorScheme.onPrimary)
-                  : Text(
-                      '${index + 1}',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onPrimaryContainer,
-                        fontWeight: FontWeight.bold,
-                      ),
+              child: isCurrentPlaying
+                ? Icon(
+                    isPlaying ? Icons.play_arrow : Icons.pause,
+                    color: Theme.of(context).colorScheme.onPrimary,
+                  )
+                : Text(
+                    '${index + 1}',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      fontWeight: FontWeight.bold,
                     ),
+                  ),
             ),
             title: Text(
               audioFile.fileName,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontWeight: isCurrentAudio ? FontWeight.bold : null,
+                fontWeight: isCurrentPlaying ? FontWeight.bold : null,
               ),
             ),
             subtitle: Text(

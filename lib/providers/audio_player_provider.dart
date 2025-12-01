@@ -2,6 +2,7 @@ import 'dart:io' as io;
 
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:audio_session/audio_session.dart';
 import '../models/audio_file.dart';
 import '../models/playback_progress.dart';
 import '../services/database_service.dart';
@@ -72,8 +73,20 @@ class AudioPlayerProvider extends ChangeNotifier {
   }
 
   AudioPlayerProvider() {
+    _initializeAudioSession();
     _initializePlayer();
     _restoreLastPlayback();
+  }
+
+  /// 初始化音频会话（用于后台播放和通知栏控制）
+  Future<void> _initializeAudioSession() async {
+    try {
+      final session = await AudioSession.instance;
+      await session.configure(const AudioSessionConfiguration.music());
+      debugPrint('音频会话初始化成功');
+    } catch (e) {
+      debugPrint('音频会话初始化失败: $e');
+    }
   }
 
   /// 设置 SettingsProvider（用于获取跳过时长配置）
@@ -247,12 +260,7 @@ class AudioPlayerProvider extends ChangeNotifier {
       _currentAudioFile = audioFile;
       _currentBookId = bookId ?? audioFile.bookId;
 
-      // 更新书籍的当前音频文件ID
-      if (_currentBookId != null) {
-        await _updateBookCurrentAudio(_currentBookId!, audioFile.id!);
-      }
-
-      // 使用 setAudioSource 替代 setFilePath，并设置初始位置
+      // 加载音频文件
       await _audioPlayer.setFilePath(audioFile.filePath);
 
       // 恢复播放进度
@@ -302,6 +310,12 @@ class AudioPlayerProvider extends ChangeNotifier {
     }
     try {
       await _audioPlayer.play();
+
+      // 在开始播放时更新书籍的当前音频文件ID
+      if (_currentBookId != null && _currentAudioFile?.id != null) {
+        await _updateBookCurrentAudio(_currentBookId!, _currentAudioFile!.id!);
+        debugPrint('✅ 播放时更新书籍当前音频ID: bookId=$_currentBookId, audioFileId=${_currentAudioFile!.id}');
+      }
     } on PlayerInterruptedException {
       // 忽略中断异常
     } catch (e) {
@@ -556,6 +570,54 @@ class AudioPlayerProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('❌ 获取下一个音频文件失败: $e');
       return null;
+    }
+  }
+
+  /// 获取上一个音频文件
+  Future<AudioFile?> _getPreviousAudioFile() async {
+    if (_currentAudioFile == null || _currentBookId == null) {
+      debugPrint('❌ 当前音频或书籍ID为空');
+      return null;
+    }
+
+    try {
+      final db = await _databaseService.database;
+      final audioFileMaps = await db.query(
+        'audio_files',
+        where: 'book_id = ?',
+        whereArgs: [_currentBookId],
+        orderBy: 'sort_order ASC, file_name ASC',
+      );
+
+      if (audioFileMaps.isEmpty) return null;
+
+      final audioFiles = audioFileMaps.map((map) => AudioFile.fromMap(map)).toList();
+      final currentIndex = audioFiles.indexWhere((audio) => audio.id == _currentAudioFile!.id);
+
+      if (currentIndex > 0) {
+        return audioFiles[currentIndex - 1];
+      }
+
+      return null;
+    } catch (e) {
+      debugPrint('❌ 获取上一个音频文件失败: $e');
+      return null;
+    }
+  }
+
+  /// 播放下一首
+  Future<void> playNext() async {
+    final nextAudio = await _getNextAudioFile();
+    if (nextAudio != null) {
+      await loadAndPlay(nextAudio, bookId: _currentBookId);
+    }
+  }
+
+  /// 播放上一首
+  Future<void> playPrevious() async {
+    final previousAudio = await _getPreviousAudioFile();
+    if (previousAudio != null) {
+      await loadAndPlay(previousAudio, bookId: _currentBookId);
     }
   }
 
