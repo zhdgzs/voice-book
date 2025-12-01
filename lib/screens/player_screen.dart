@@ -8,6 +8,9 @@ import '../providers/book_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/sleep_timer_provider.dart';
 import '../widgets/sleep_timer_dialog.dart';
+import '../widgets/bookmark_list_dialog.dart';
+import '../models/bookmark.dart';
+import '../services/database_service.dart';
 import '../utils/helpers.dart';
 
 /// 音频播放器页面
@@ -460,6 +463,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
+                leading: const Icon(Icons.bookmark_add),
+                title: const Text('添加书签'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _addBookmark(context);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.bookmarks),
+                title: const Text('书签列表'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showBookmarks(context);
+                },
+              ),
+              ListTile(
                 leading: const Icon(Icons.playlist_play),
                 title: const Text('播放列表'),
                 onTap: () {
@@ -846,6 +865,95 @@ class _PlayerScreenState extends State<PlayerScreen> {
     showDialog(
       context: context,
       builder: (context) => const SleepTimerDialog(),
+    );
+  }
+
+  /// 添加书签
+  Future<void> _addBookmark(BuildContext context) async {
+    final audioPlayer = context.read<AudioPlayerProvider>();
+    final currentAudio = audioPlayer.currentAudioFile;
+
+    if (currentAudio == null) return;
+
+    final position = audioPlayer.position.inMilliseconds;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        String? title;
+        String? note;
+
+        return AlertDialog(
+          title: const Text('添加书签'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                decoration: const InputDecoration(
+                  labelText: '书签标题（可选）',
+                  hintText: '例如：精彩片段',
+                ),
+                onChanged: (value) => title = value,
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                decoration: const InputDecoration(
+                  labelText: '备注（可选）',
+                  hintText: '添加一些备注信息',
+                ),
+                maxLines: 2,
+                onChanged: (value) => note = value,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () async {
+                final bookmark = Bookmark(
+                  audioFileId: currentAudio.id!,
+                  position: position,
+                  title: title?.isEmpty == true ? null : title,
+                  note: note?.isEmpty == true ? null : note,
+                  createdAt: DateTime.now().millisecondsSinceEpoch,
+                );
+
+                final db = await DatabaseService().database;
+                await db.insert('bookmarks', bookmark.toMap());
+
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('书签已添加')),
+                  );
+                }
+              },
+              child: const Text('添加'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// 显示书签列表
+  void _showBookmarks(BuildContext context) {
+    final audioPlayer = context.read<AudioPlayerProvider>();
+    final currentAudio = audioPlayer.currentAudioFile;
+
+    if (currentAudio == null) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => BookmarkListDialog(
+        audioFileId: currentAudio.id!,
+        onBookmarkTap: (position) {
+          audioPlayer.seek(Duration(milliseconds: position));
+        },
+      ),
     );
   }
 }
