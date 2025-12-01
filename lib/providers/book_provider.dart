@@ -218,6 +218,41 @@ class BookProvider extends ChangeNotifier {
     }).toList();
   }
 
+  /// 更新书籍的当前播放音频
+  Future<void> updateCurrentAudio(int bookId, int audioFileId) async {
+    try {
+      final db = await _databaseService.database;
+      await db.update(
+        'books',
+        {
+          'current_audio_file_id': audioFileId,
+          'updated_at': DateTime.now().millisecondsSinceEpoch,
+        },
+        where: 'id = ?',
+        whereArgs: [bookId],
+      );
+
+      final index = _books.indexWhere((b) => b.id == bookId);
+      if (index != -1) {
+        _books[index] = _books[index].copyWith(
+          currentAudioFileId: audioFileId,
+          updatedAt: DateTime.now().millisecondsSinceEpoch,
+        );
+      }
+
+      if (_currentBook?.id == bookId) {
+        _currentBook = _currentBook!.copyWith(
+          currentAudioFileId: audioFileId,
+          updatedAt: DateTime.now().millisecondsSinceEpoch,
+        );
+      }
+
+      notifyListeners();
+    } catch (e) {
+      debugPrint('更新书籍当前音频失败: $e');
+    }
+  }
+
   /// 清空错误信息
   void clearError() {
     _errorMessage = null;

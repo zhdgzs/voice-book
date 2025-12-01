@@ -46,9 +46,8 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
 
   /// 滚动到当前播放的音频（基于索引计算）
   void _scrollToCurrentAudio() {
-    final playerProvider = context.read<AudioPlayerProvider>();
     final bookProvider = context.read<BookProvider>();
-    final currentAudioId = playerProvider.currentAudioFile?.id;
+    final currentAudioId = widget.book.currentAudioFileId;
 
     if (currentAudioId == null) return;
 
@@ -450,9 +449,10 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
 
   /// 构建音频文件项
   Widget _buildAudioFileItem(AudioFile audioFile, int index) {
-    return Consumer<AudioPlayerProvider>(
-      builder: (context, playerProvider, child) {
-        final isCurrentAudio = playerProvider.currentAudioFile?.id == audioFile.id;
+    return Consumer2<AudioPlayerProvider, BookProvider>(
+      builder: (context, playerProvider, bookProvider, child) {
+        final isPlaying = playerProvider.currentAudioFile?.id == audioFile.id && playerProvider.isPlaying;
+        final isCurrentAudio = widget.book.currentAudioFileId == audioFile.id;
 
         return Container(
           color: isCurrentAudio ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3) : null,
@@ -461,15 +461,17 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
               backgroundColor: isCurrentAudio
                 ? Theme.of(context).colorScheme.primary
                 : Theme.of(context).colorScheme.primaryContainer,
-              child: isCurrentAudio
+              child: isPlaying
                 ? Icon(Icons.play_arrow, color: Theme.of(context).colorScheme.onPrimary)
-                : Text(
-                    '${index + 1}',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onPrimaryContainer,
-                      fontWeight: FontWeight.bold,
+                : isCurrentAudio
+                  ? Icon(Icons.bookmark, color: Theme.of(context).colorScheme.onPrimary)
+                  : Text(
+                      '${index + 1}',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
             ),
             title: Text(
               audioFile.fileName,
@@ -487,10 +489,10 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
               ),
             ),
             trailing: IconButton(
-              icon: Icon(isCurrentAudio ? Icons.pause_circle : Icons.play_circle_outline),
+              icon: Icon(isPlaying ? Icons.pause_circle : Icons.play_circle_outline),
               onPressed: () {
                 final audioPlayer = context.read<AudioPlayerProvider>();
-                if (isCurrentAudio && audioPlayer.isPlaying) {
+                if (isPlaying) {
                   audioPlayer.pause();
                 } else {
                   audioPlayer.loadAndPlay(audioFile, bookId: widget.book.id);
@@ -498,7 +500,6 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
               },
             ),
             onTap: () {
-              // 直接打开播放器，由 PlayerScreen 负责加载
               MainScreen.openPlayer(
                 context,
                 book: widget.book,
