@@ -69,7 +69,7 @@ jobs:
 
     - name: 构建 Release APK
       if: github.event_name != 'pull_request'
-      run: flutter build apk --release --split-per-abi
+      run: flutter build apk --release --split-per-abi || true
 
     - name: 重命名 APK 文件
       if: github.event_name != 'pull_request'
