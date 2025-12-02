@@ -23,7 +23,6 @@ class _FileScannerTestScreenState extends State<FileScannerTestScreen> {
   List<File> _scannedFiles = [];
   List<AudioMetadata> _metadataList = [];
   String _statusMessage = '准备就绪';
-  int _scanProgress = 0;
 
   @override
   void initState() {
@@ -393,20 +392,6 @@ class _FileScannerTestScreenState extends State<FileScannerTestScreen> {
         ],
       ),
     );
-  }
-
-  /// 格式化时长
-  String _formatDuration(int milliseconds) {
-    final duration = Duration(milliseconds: milliseconds);
-    final hours = duration.inHours;
-    final minutes = duration.inMinutes.remainder(60);
-    final seconds = duration.inSeconds.remainder(60);
-
-    if (hours > 0) {
-      return '$hours:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-    } else {
-      return '$minutes:${seconds.toString().padLeft(2, '0')}';
-    }
   }
 
   /// 显示文件详情

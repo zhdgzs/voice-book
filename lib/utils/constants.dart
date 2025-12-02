@@ -5,6 +5,7 @@
 /// - 文件格式
 /// - 默认值
 /// - 限制值
+library;
 
 /// 应用信息
 class AppConstants {

@@ -370,7 +370,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
             },
           ),
           // 迷你播放器
-          Positioned(
+          const Positioned(
             right: 0,
             bottom: 0,
             child: MiniPlayer(),
@@ -389,7 +389,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
         final isPlaying = isCurrentPlaying && playerProvider.isPlaying;
 
         return Container(
-          color: isCurrentPlaying ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3) : null,
+          color: isCurrentPlaying ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3) : null,
           child: ListTile(
             leading: CircleAvatar(
               backgroundColor: isCurrentPlaying

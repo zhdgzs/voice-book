@@ -268,7 +268,7 @@ class AudioPlayerProvider extends ChangeNotifier {
 
       // 应用跳过开头逻辑：如果当前位置在跳过范围内，则跳到跳过开头的位置
       if (_skipStartSeconds > 0 && _position < _skipStartSeconds * 1000) {
-        debugPrint('跳过开头 ${_skipStartSeconds}秒');
+        debugPrint('跳过开头 $_skipStartSeconds秒');
         await seek(_skipStartSeconds * 1000);
       }
 

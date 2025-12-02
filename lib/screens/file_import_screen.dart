@@ -32,7 +32,6 @@ class _FileImportScreenState extends State<FileImportScreen> {
   bool _isScanning = false;
   bool _recursiveScan = true; // 默认开启递归扫描
   String? _selectedFolderPath;
-  String? _selectedFolderName;
   List<File> _scannedFiles = [];
   String _statusMessage = '准备就绪';
 

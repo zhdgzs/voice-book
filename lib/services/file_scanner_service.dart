@@ -116,7 +116,6 @@ class FileScannerService {
         }
       } catch (e) {
         // 忽略单个目录的扫描错误，继续扫描其他目录
-        print('扫描目录失败: $directoryPath, 错误: $e');
       }
     }
 
@@ -158,7 +157,7 @@ class FileScannerService {
       final documentsDir = await getApplicationDocumentsDirectory();
       directories.add(documentsDir.path);
     } catch (e) {
-      print('获取常用目录失败: $e');
+      // 忽略获取目录失败的错误
     }
 
     return directories;
@@ -274,31 +273,6 @@ class FileScannerService {
     return sortedFiles;
   }
 
-  /// 检查文件是否为支持的音频格式
-  ///
-  /// [filePath] 文件路径
-  ///
-  /// 返回 true 表示支持，false 表示不支持
-  bool _isSupportedAudioFile(String filePath) {
-    final extension = path.extension(filePath).toLowerCase();
-    return supportedExtensions.contains(extension);
-  }
-
-  /// 获取不带扩展名的文件名
-  ///
-  /// [filePath] 文件路径
-  ///
-  /// 返回不带扩展名的文件名
-  String _getFileNameWithoutExtension(String filePath) {
-    final fileName = path.basename(filePath);
-    final lastDotIndex = fileName.lastIndexOf('.');
-
-    if (lastDotIndex > 0) {
-      return fileName.substring(0, lastDotIndex);
-    }
-
-    return fileName;
-  }
 
   /// 格式化文件大小
   ///
@@ -330,7 +304,7 @@ class FileScannerService {
         final metadata = await readMetadata(file);
         totalDuration += metadata.duration ?? 0;
       } catch (e) {
-        print('获取时长失败: ${file.path}, 错误: $e');
+        // 忽略单个文件的元数据读取错误
       }
     }
 

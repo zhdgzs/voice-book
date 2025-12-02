@@ -171,21 +171,13 @@ class PermissionService {
   ///
   /// 用于向用户展示权限状态
   String getPermissionStatusDescription(PermissionStatus status) {
-    switch (status) {
-      case PermissionStatus.granted:
-        return '已授予';
-      case PermissionStatus.denied:
-        return '已拒绝';
-      case PermissionStatus.restricted:
-        return '受限制';
-      case PermissionStatus.limited:
-        return '部分授予';
-      case PermissionStatus.permanentlyDenied:
-        return '永久拒绝';
-      case PermissionStatus.provisional:
-        return '临时授予';
-      default:
-        return '未知';
-    }
+    return switch (status) {
+      PermissionStatus.granted => '已授予',
+      PermissionStatus.denied => '已拒绝',
+      PermissionStatus.restricted => '受限制',
+      PermissionStatus.limited => '部分授予',
+      PermissionStatus.permanentlyDenied => '永久拒绝',
+      PermissionStatus.provisional => '临时授予',
+    };
   }
 }

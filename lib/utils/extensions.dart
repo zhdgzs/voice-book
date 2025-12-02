@@ -1,6 +1,7 @@
 /// 扩展方法
 ///
 /// 为 Dart 内置类型添加便捷的扩展方法
+library;
 
 /// String 扩展
 extension StringExtension on String {
