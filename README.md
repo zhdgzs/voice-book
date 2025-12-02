@@ -3,9 +3,9 @@
 [![GitHub](https://img.shields.io/badge/GitHub-zhdgzs%2Fvoice--book-blue?logo=github)](https://github.com/zhdgzs/voice-book)
 [![Gitee](https://img.shields.io/badge/Gitee-zhdgzs%2Fvoice--book-red?logo=gitee)](https://gitee.com/zhdgzs/voice-book)
 
-一款专注于隐私保护的离线本地有声书播放器，采用 Flutter 开发，~~支持跨平台使用~~没有mac，不能调试，目前只支持安卓。
+一款专注于隐私保护的离线本地有声书播放器，采用 Flutter 开发，~~支持跨平台使用~~ 没有mac，不能调试，目前只支持安卓。
 
-如有问题，请在Github仓库反馈。
+如有问题，请在Github仓库反馈；已发布的apk，也在Github的Release页
 
 ## ✨ 特性
 
