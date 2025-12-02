@@ -20,7 +20,7 @@
 
     <application
         android:label="voice_book"
-        android:name="io.flutter.embedding.android.FlutterApplication"
+        android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"
