@@ -20,6 +20,7 @@ class _FileScannerTestScreenState extends State<FileScannerTestScreen> {
 
   bool _hasPermission = false;
   bool _isScanning = false;
+  int _scanProgress = 0;
   List<File> _scannedFiles = [];
   List<AudioMetadata> _metadataList = [];
   String _statusMessage = '准备就绪';

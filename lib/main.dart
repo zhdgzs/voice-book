@@ -348,30 +348,36 @@ class SettingsScreen extends StatelessWidget {
                 ),
                 Consumer<SettingsProvider>(
                   builder: (context, settings, child) {
-                    return RadioGroup<ThemeMode>(
-                      value: settings.themeMode,
-                      onChanged: (value) {
-                        settings.setThemeMode(value!);
-                      },
-                      child: Column(
-                        children: [
-                          RadioListTile<ThemeMode>(
-                            title: const Text('跟随系统'),
-                            subtitle: const Text('根据系统设置自动切换主题'),
-                            value: ThemeMode.system,
-                          ),
-                          RadioListTile<ThemeMode>(
-                            title: const Text('浅色模式'),
-                            subtitle: const Text('始终使用浅色主题'),
-                            value: ThemeMode.light,
-                          ),
-                          RadioListTile<ThemeMode>(
-                            title: const Text('深色模式'),
-                            subtitle: const Text('始终使用深色主题'),
-                            value: ThemeMode.dark,
-                          ),
-                        ],
-                      ),
+                    return Column(
+                      children: [
+                        RadioListTile<ThemeMode>(
+                          title: const Text('跟随系统'),
+                          subtitle: const Text('根据系统设置自动切换主题'),
+                          value: ThemeMode.system,
+                          groupValue: settings.themeMode,
+                          onChanged: (value) {
+                            settings.setThemeMode(value!);
+                          },
+                        ),
+                        RadioListTile<ThemeMode>(
+                          title: const Text('浅色模式'),
+                          subtitle: const Text('始终使用浅色主题'),
+                          value: ThemeMode.light,
+                          groupValue: settings.themeMode,
+                          onChanged: (value) {
+                            settings.setThemeMode(value!);
+                          },
+                        ),
+                        RadioListTile<ThemeMode>(
+                          title: const Text('深色模式'),
+                          subtitle: const Text('始终使用深色主题'),
+                          value: ThemeMode.dark,
+                          groupValue: settings.themeMode,
+                          onChanged: (value) {
+                            settings.setThemeMode(value!);
+                          },
+                        ),
+                      ],
                     );
                   },
                 ),

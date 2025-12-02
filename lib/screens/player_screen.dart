@@ -433,25 +433,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
         final speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
         return AlertDialog(
           title: const Text('播放速度'),
-          content: RadioGroup<double>(
-            value: audioPlayer.playbackSpeed,
-            onChanged: (value) {
-              if (value != null) {
-                audioPlayer.setPlaybackSpeed(value);
-                Navigator.pop(context);
-              }
-            },
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: speeds.map((speed) {
-                final isSelected = audioPlayer.playbackSpeed == speed;
-                return RadioListTile<double>(
-                  title: Text('${speed}x'),
-                  value: speed,
-                  selected: isSelected,
-                );
-              }).toList(),
-            ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: speeds.map((speed) {
+              final isSelected = audioPlayer.playbackSpeed == speed;
+              return RadioListTile<double>(
+                title: Text('${speed}x'),
+                value: speed,
+                groupValue: audioPlayer.playbackSpeed,
+                selected: isSelected,
+                onChanged: (value) {
+                  if (value != null) {
+                    audioPlayer.setPlaybackSpeed(value);
+                    Navigator.pop(context);
+                  }
+                },
+              );
+            }).toList(),
+          ),
           ),
         );
       },
