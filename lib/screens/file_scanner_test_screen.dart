@@ -20,7 +20,6 @@ class _FileScannerTestScreenState extends State<FileScannerTestScreen> {
 
   bool _hasPermission = false;
   bool _isScanning = false;
-  int _scanProgress = 0;
   List<File> _scannedFiles = [];
   List<AudioMetadata> _metadataList = [];
   String _statusMessage = '准备就绪';
@@ -80,7 +79,6 @@ class _FileScannerTestScreenState extends State<FileScannerTestScreen> {
       _statusMessage = '正在获取常用目录...';
       _scannedFiles.clear();
       _metadataList.clear();
-      _scanProgress = 0;
     });
 
     try {
@@ -97,7 +95,6 @@ class _FileScannerTestScreenState extends State<FileScannerTestScreen> {
         recursive: true,
         onProgress: (count) {
           setState(() {
-            _scanProgress = count;
             _statusMessage = '已扫描 $count 个音频文件...';
           });
         },

@@ -32,7 +32,6 @@ class _FileImportScreenState extends State<FileImportScreen> {
   bool _isScanning = false;
   bool _recursiveScan = true; // 默认开启递归扫描
   String? _selectedFolderPath;
-  String? _selectedFolderName;
   List<File> _scannedFiles = [];
   String _statusMessage = '准备就绪';
 
@@ -104,7 +103,6 @@ class _FileImportScreenState extends State<FileImportScreen> {
         setState(() {
           _isScanning = true;
           _selectedFolderPath = result;
-          _selectedFolderName = folderName;
           _bookNameController.text = folderName;
           _statusMessage = '准备扫描文件夹: $folderName';
           _scannedFiles.clear();

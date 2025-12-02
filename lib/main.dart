@@ -350,32 +350,35 @@ class SettingsScreen extends StatelessWidget {
                   builder: (context, settings, child) {
                     return Column(
                       children: [
+                        // ignore: deprecated_member_use
                         RadioListTile<ThemeMode>(
                           title: const Text('跟随系统'),
                           subtitle: const Text('根据系统设置自动切换主题'),
                           value: ThemeMode.system,
+                          // ignore: deprecated_member_use
                           groupValue: settings.themeMode,
-                          onChanged: (value) {
-                            settings.setThemeMode(value!);
-                          },
+                          // ignore: deprecated_member_use
+                          onChanged: (value) => settings.setThemeMode(value!),
                         ),
+                        // ignore: deprecated_member_use
                         RadioListTile<ThemeMode>(
                           title: const Text('浅色模式'),
                           subtitle: const Text('始终使用浅色主题'),
                           value: ThemeMode.light,
+                          // ignore: deprecated_member_use
                           groupValue: settings.themeMode,
-                          onChanged: (value) {
-                            settings.setThemeMode(value!);
-                          },
+                          // ignore: deprecated_member_use
+                          onChanged: (value) => settings.setThemeMode(value!),
                         ),
+                        // ignore: deprecated_member_use
                         RadioListTile<ThemeMode>(
                           title: const Text('深色模式'),
                           subtitle: const Text('始终使用深色主题'),
                           value: ThemeMode.dark,
+                          // ignore: deprecated_member_use
                           groupValue: settings.themeMode,
-                          onChanged: (value) {
-                            settings.setThemeMode(value!);
-                          },
+                          // ignore: deprecated_member_use
+                          onChanged: (value) => settings.setThemeMode(value!),
                         ),
                       ],
                     );

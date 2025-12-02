@@ -436,12 +436,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: speeds.map((speed) {
-              final isSelected = audioPlayer.playbackSpeed == speed;
+              // ignore: deprecated_member_use
               return RadioListTile<double>(
                 title: Text('${speed}x'),
                 value: speed,
+                // ignore: deprecated_member_use
                 groupValue: audioPlayer.playbackSpeed,
-                selected: isSelected,
+                // ignore: deprecated_member_use
                 onChanged: (value) {
                   if (value != null) {
                     audioPlayer.setPlaybackSpeed(value);
@@ -450,7 +451,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 },
               );
             }).toList(),
-          ),
           ),
         );
       },
@@ -699,6 +699,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (currentIndex > 0) {
       await audioPlayer.loadAndPlay(audioFiles[currentIndex - 1], bookId: bookId);
     } else {
+      // ignore: use_build_context_synchronously
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('已经是第一个文件了')),
@@ -728,6 +729,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (currentIndex < audioFiles.length - 1) {
       await audioPlayer.loadAndPlay(audioFiles[currentIndex + 1], bookId: bookId);
     } else {
+      // ignore: use_build_context_synchronously
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('已经是最后一个文件了')),
