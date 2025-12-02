@@ -1,0 +1,93 @@
+name: Build and Release APK
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v3
+
+    - name: 设置 Java 环境
+      uses: actions/setup-java@v3
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+
+    - name: 设置 Flutter 环境
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.24.0'
+        channel: 'stable'
+        cache: true
+
+    - name: 获取依赖
+      run: flutter pub get
+
+    - name: 运行代码分析
+      run: flutter analyze
+
+    - name: 解码签名密钥
+      if: github.event_name != 'pull_request'
+      run: |
+        echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/keystore.jks
+        echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" > android/key.properties
+        echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
+        echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
+        echo "storeFile=keystore.jks" >> android/key.properties
+
+    - name: 构建 APK (Release)
+      if: github.event_name != 'pull_request'
+      run: flutter build apk --release --split-per-abi
+
+    - name: 构建 APK (Debug)
+      if: github.event_name == 'pull_request'
+      run: flutter build apk --debug
+
+    - name: 重命名 APK 文件
+      if: github.event_name != 'pull_request'
+      run: |
+        cd build/app/outputs/flutter-apk
+        mv app-armeabi-v7a-release.apk voice-book-armeabi-v7a-release.apk
+        mv app-arm64-v8a-release.apk voice-book-arm64-v8a-release.apk
+        mv app-x86_64-release.apk voice-book-x86_64-release.apk
+
+    - name: 上传 APK 构建产物
+      uses: actions/upload-artifact@v3
+      with:
+        name: apk-builds
+        path: |
+          build/app/outputs/flutter-apk/*.apk
+        retention-days: 30
+
+    - name: 创建 GitHub Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          build/app/outputs/flutter-apk/voice-book-armeabi-v7a-release.apk
+          build/app/outputs/flutter-apk/voice-book-arm64-v8a-release.apk
+          build/app/outputs/flutter-apk/voice-book-x86_64-release.apk
+        body: |
+          ## Voice Book ${{ github.ref_name }}
+
+          ### 下载说明
+          - `voice-book-arm64-v8a-release.apk` - 推荐，适用于大多数现代 Android 设备
+          - `voice-book-armeabi-v7a-release.apk` - 适用于较老的 32 位设备
+          - `voice-book-x86_64-release.apk` - 适用于 x86 架构设备（模拟器）
+
+          ### 更新内容
+          请查看提交记录了解详细更新内容。
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
