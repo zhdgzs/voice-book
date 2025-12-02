@@ -46,31 +46,35 @@ jobs:
 
     - name: 构建 Release APK
       if: github.event_name != 'pull_request'
-      run: flutter build apk --release --target-platform android-arm64
+      run: flutter build apk --release --split-per-abi
 
     - name: 重命名 APK 文件
       if: github.event_name != 'pull_request'
       run: |
         cd build/app/outputs/flutter-apk
-        mv app-release.apk voice-book-release.apk
+        mv app-armeabi-v7a-release.apk voice-book-arm32-release.apk
+        mv app-arm64-v8a-release.apk voice-book-arm64-release.apk
 
     - name: 上传 APK 构建产物
       uses: actions/upload-artifact@v4
       with:
         name: apk-builds
-        path: build/app/outputs/flutter-apk/voice-book-release.apk
+        path: build/app/outputs/flutter-apk/voice-book-*-release.apk
         retention-days: 30
 
     - name: 创建 GitHub Release
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v1
       with:
-        files: build/app/outputs/flutter-apk/voice-book-release.apk
+        files: |
+          build/app/outputs/flutter-apk/voice-book-arm32-release.apk
+          build/app/outputs/flutter-apk/voice-book-arm64-release.apk
         body: |
           ## Voice Book ${{ github.ref_name }}
 
           ### 下载说明
-          - `voice-book-release.apk` - 适用于 Android 5.0+ (ARM64) 设备
+          - `voice-book-arm64-release.apk` - 适用于 64 位设备（推荐，约 35-40MB）
+          - `voice-book-arm32-release.apk` - 适用于 32 位旧设备（约 30-35MB）
 
           ### 更新内容
           请查看提交记录了解详细更新内容。
