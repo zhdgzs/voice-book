@@ -2,7 +2,6 @@ name: Build and Release APK
 
 on:
   push:
-    branches: [ main ]
     tags:
       - 'v*'
   pull_request:
@@ -45,13 +44,9 @@ jobs:
         echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
         echo "storeFile=keystore.jks" >> android/key.properties
 
-    - name: 构建 APK (Release)
+    - name: 构建 Release APK
       if: github.event_name != 'pull_request'
       run: flutter build apk --release --target-platform android-arm64
-
-    - name: 构建 APK (Debug)
-      if: github.event_name == 'pull_request'
-      run: flutter build apk --debug
 
     - name: 重命名 APK 文件
       if: github.event_name != 'pull_request'
