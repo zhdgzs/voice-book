@@ -12,8 +12,6 @@ class SettingsProvider extends ChangeNotifier {
   static const String _keyDefaultPlaybackSpeed = 'default_playback_speed';
   static const String _keyAutoPlay = 'auto_play';
   static const String _keySleepTimerDuration = 'sleep_timer_duration';
-  static const String _keySkipStartSeconds = 'skip_start_seconds';
-  static const String _keySkipEndSeconds = 'skip_end_seconds';
 
   SharedPreferences? _prefs;
 
@@ -29,19 +27,11 @@ class SettingsProvider extends ChangeNotifier {
   /// 睡眠定时器时长（分钟）
   int _sleepTimerDuration = 30;
 
-  /// 跳过开头时长（秒）
-  int _skipStartSeconds = 0;
-
-  /// 跳过结尾时长（秒）
-  int _skipEndSeconds = 0;
-
   // Getters
   ThemeMode get themeMode => _themeMode;
   double get defaultPlaybackSpeed => _defaultPlaybackSpeed;
   bool get autoPlay => _autoPlay;
   int get sleepTimerDuration => _sleepTimerDuration;
-  int get skipStartSeconds => _skipStartSeconds;
-  int get skipEndSeconds => _skipEndSeconds;
 
   /// 是否为暗色主题
   bool get isDarkMode => _themeMode == ThemeMode.dark;
@@ -71,12 +61,6 @@ class SettingsProvider extends ChangeNotifier {
 
     // 加载睡眠定时器时长
     _sleepTimerDuration = _prefs!.getInt(_keySleepTimerDuration) ?? 30;
-
-    // 加载跳过开头时长
-    _skipStartSeconds = _prefs!.getInt(_keySkipStartSeconds) ?? 0;
-
-    // 加载跳过结尾时长
-    _skipEndSeconds = _prefs!.getInt(_keySkipEndSeconds) ?? 0;
 
     notifyListeners();
   }
@@ -119,28 +103,12 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 设置跳过开头时长
-  Future<void> setSkipStartSeconds(int seconds) async {
-    _skipStartSeconds = seconds;
-    await _prefs?.setInt(_keySkipStartSeconds, seconds);
-    notifyListeners();
-  }
-
-  /// 设置跳过结尾时长
-  Future<void> setSkipEndSeconds(int seconds) async {
-    _skipEndSeconds = seconds;
-    await _prefs?.setInt(_keySkipEndSeconds, seconds);
-    notifyListeners();
-  }
-
   /// 重置所有设置
   Future<void> resetSettings() async {
     _themeMode = ThemeMode.system;
     _defaultPlaybackSpeed = 1.0;
     _autoPlay = false;
     _sleepTimerDuration = 30;
-    _skipStartSeconds = 0;
-    _skipEndSeconds = 0;
 
     await _prefs?.clear();
     notifyListeners();

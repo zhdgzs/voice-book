@@ -36,6 +36,12 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await context.read<BookProvider>().setCurrentBook(widget.book);
+
+      // 加载该书籍的上次播放进度（如果有）
+      if (widget.book.id != null) {
+        await context.read<AudioPlayerProvider>().loadBookProgress(widget.book.id!);
+      }
+
       _isInitialized = true;
       if (mounted) {
         // 延迟一帧，确保列表完全渲染
@@ -150,6 +156,104 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
     );
+  }
+
+  /// 显示跳过设置对话框
+  Future<void> _showSkipSettingsDialog() async {
+    final bookProvider = context.read<BookProvider>();
+    final book = bookProvider.books.firstWhere((b) => b.id == widget.book.id);
+
+    int skipStartSeconds = book.skipStartSeconds;
+    int skipEndSeconds = book.skipEndSeconds;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('跳过设置'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '为这本书设置跳过开头和结尾的时长',
+                  style: TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+                const SizedBox(height: 24),
+                // 跳过开头
+                Text(
+                  '跳过开头: ${skipStartSeconds == 0 ? '不跳过' : '$skipStartSeconds 秒'}',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Slider(
+                  value: skipStartSeconds.toDouble(),
+                  min: 0,
+                  max: 60,
+                  divisions: 12,
+                  label: skipStartSeconds == 0 ? '不跳过' : '$skipStartSeconds秒',
+                  onChanged: (value) {
+                    setState(() {
+                      skipStartSeconds = value.toInt();
+                    });
+                  },
+                ),
+                const SizedBox(height: 16),
+                // 跳过结尾
+                Text(
+                  '跳过结尾: ${skipEndSeconds == 0 ? '不跳过' : '$skipEndSeconds 秒'}',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Slider(
+                  value: skipEndSeconds.toDouble(),
+                  min: 0,
+                  max: 60,
+                  divisions: 12,
+                  label: skipEndSeconds == 0 ? '不跳过' : '$skipEndSeconds秒',
+                  onChanged: (value) {
+                    setState(() {
+                      skipEndSeconds = value.toInt();
+                    });
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      final updatedBook = book.copyWith(
+        skipStartSeconds: skipStartSeconds,
+        skipEndSeconds: skipEndSeconds,
+        updatedAt: DateTime.now().millisecondsSinceEpoch,
+      );
+
+      final success = await bookProvider.updateBook(updatedBook);
+      if (success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('跳过设置已更新')),
+        );
+        // 如果当前正在播放这本书，重新加载书籍信息
+        final audioPlayer = context.read<AudioPlayerProvider>();
+        if (audioPlayer.currentBookId == widget.book.id) {
+          await audioPlayer.loadBookProgress(widget.book.id!);
+        }
+      }
+    }
   }
 
   /// 显示删除确认对话框
@@ -292,6 +396,9 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
           PopupMenuButton<String>(
             onSelected: (value) {
               switch (value) {
+                case 'skip_settings':
+                  _showSkipSettingsDialog();
+                  break;
                 case 'edit':
                   _showEditDialog();
                   break;
@@ -301,6 +408,16 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
               }
             },
             itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'skip_settings',
+                child: Row(
+                  children: [
+                    Icon(Icons.skip_next),
+                    SizedBox(width: 8),
+                    Text('跳过设置'),
+                  ],
+                ),
+              ),
               const PopupMenuItem(
                 value: 'edit',
                 child: Row(

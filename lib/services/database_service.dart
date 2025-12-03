@@ -31,7 +31,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -50,6 +50,8 @@ class DatabaseService {
         total_duration INTEGER DEFAULT 0,
         current_audio_file_id INTEGER,
         is_favorite INTEGER DEFAULT 0,
+        skip_start_seconds INTEGER DEFAULT 0,
+        skip_end_seconds INTEGER DEFAULT 0,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       )
@@ -108,11 +110,11 @@ class DatabaseService {
 
   /// 数据库升级
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // 未来版本升级时在这里处理数据库迁移
-    // 例如：
-    // if (oldVersion < 2) {
-    //   await db.execute('ALTER TABLE books ADD COLUMN new_field TEXT');
-    // }
+    // 从版本 1 升级到版本 2：添加跳过开头/结尾时长字段
+    if (oldVersion < 2) {
+      await db.execute('ALTER TABLE books ADD COLUMN skip_start_seconds INTEGER DEFAULT 0');
+      await db.execute('ALTER TABLE books ADD COLUMN skip_end_seconds INTEGER DEFAULT 0');
+    }
   }
 
   /// 关闭数据库
