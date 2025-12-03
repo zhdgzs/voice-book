@@ -30,6 +30,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
   final ScrollController _scrollController = ScrollController();
   int? _lastScrolledAudioId; // 记录上次滚动到的音频ID
   bool _isInitialized = false; // 标记是否已初始化
+  int? _pendingScrollAudioId; // 当未加载播放器时用于定位的音频ID
 
   @override
   void initState() {
@@ -46,8 +47,14 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
 
         if (isPlayingOtherBook) {
           debugPrint('⚠️ 正在播放其他书籍，进入详情页时不加载播放进度');
+          final previewAudio = await audioPlayer.loadBookProgress(
+            widget.book.id!,
+            loadToPlayer: false,
+          );
+          _pendingScrollAudioId = previewAudio?.id;
         } else {
           await audioPlayer.loadBookProgress(widget.book.id!);
+          _pendingScrollAudioId = null;
         }
       }
 
@@ -55,7 +62,14 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
       if (mounted) {
         // 延迟一帧，确保列表完全渲染
         await Future.delayed(const Duration(milliseconds: 100));
-        if (mounted) _scrollToCurrentAudio();
+        if (mounted) {
+          if (_pendingScrollAudioId != null) {
+            _scrollToAudioId(_pendingScrollAudioId!);
+            _pendingScrollAudioId = null;
+          } else {
+            _scrollToCurrentAudio();
+          }
+        }
       }
     });
   }
@@ -106,21 +120,29 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
       return;
     }
 
-    final index = audioFiles.indexWhere((f) => f.id == currentAudioId);
+    _scrollToAudioId(currentAudioId);
+  }
+
+  /// 根据指定音频ID滚动
+  void _scrollToAudioId(int audioId) {
+    final bookProvider = context.read<BookProvider>();
+    final audioFiles = bookProvider.currentBookAudioFiles;
+
+    final index = audioFiles.indexWhere((f) => f.id == audioId);
     if (index < 0) {
-      debugPrint('⚠️ 未找到当前音频，ID: $currentAudioId');
+      debugPrint('⚠️ 未找到音频，ID: $audioId');
       return;
     }
 
     // 如果是第一个音频，不需要滚动
     if (index == 0) {
       debugPrint('✅ 当前音频是第一个，无需滚动');
-      _lastScrolledAudioId = currentAudioId;
+      _lastScrolledAudioId = audioId;
       return;
     }
 
     // 记录已滚动到的音频ID
-    _lastScrolledAudioId = currentAudioId;
+    _lastScrolledAudioId = audioId;
 
     // 确保 ScrollController 已附加到滚动视图
     if (!_scrollController.hasClients) {

@@ -656,45 +656,57 @@ class AudioPlayerProvider extends ChangeNotifier {
     }
   }
 
-  /// 加载指定书籍的上次播放进度（不自动播放）
+  /// 查询书籍最后一次播放的音频文件（仅返回数据，不修改播放器）
+  Future<AudioFile?> _fetchLastPlayedAudio(int bookId) async {
+    final db = await _databaseService.database;
+    final result = await db.rawQuery('''
+      SELECT af.*, pp.position, pp.playback_speed, b.id as book_id
+      FROM playback_progress pp
+      JOIN audio_files af ON pp.audio_file_id = af.id
+      JOIN books b ON af.book_id = b.id
+      WHERE b.id = ?
+      ORDER BY pp.updated_at DESC
+      LIMIT 1
+    ''', [bookId]);
+
+    if (result.isEmpty) {
+      debugPrint('书籍 $bookId 没有播放进度记录');
+      return null;
+    }
+
+    final audioFile = AudioFile.fromMap(result.first);
+
+    // 验证文件是否存在
+    final file = io.File(audioFile.filePath);
+    if (!await file.exists()) {
+      debugPrint('音频文件不存在: ${audioFile.filePath}');
+      // 清理无效的播放进度
+      await db.delete('playback_progress', where: 'audio_file_id = ?', whereArgs: [audioFile.id]);
+      return null;
+    }
+
+    return audioFile;
+  }
+
+  /// 加载指定书籍的上次播放进度
   ///
-  /// 用于用户进入书籍详情页时，恢复该书籍的播放状态
-  Future<void> loadBookProgress(int bookId) async {
+  /// [loadToPlayer] 为 false 时，仅返回音频信息用于 UI 定位，不会修改播放器状态
+  Future<AudioFile?> loadBookProgress(int bookId, {bool loadToPlayer = true}) async {
     try {
-      final db = await _databaseService.database;
-
-      // 查询该书籍的最后播放进度
-      final result = await db.rawQuery('''
-        SELECT af.*, pp.position, pp.playback_speed, b.id as book_id
-        FROM playback_progress pp
-        JOIN audio_files af ON pp.audio_file_id = af.id
-        JOIN books b ON af.book_id = b.id
-        WHERE b.id = ?
-        ORDER BY pp.updated_at DESC
-        LIMIT 1
-      ''', [bookId]);
-
-      if (result.isEmpty) {
-        debugPrint('书籍 $bookId 没有播放进度记录');
-        return;
+      final audioFile = await _fetchLastPlayedAudio(bookId);
+      if (audioFile == null) {
+        return null;
       }
 
-      final audioFile = AudioFile.fromMap(result.first);
-
-      // 验证文件是否存在
-      final file = io.File(audioFile.filePath);
-      if (!await file.exists()) {
-        debugPrint('音频文件不存在: ${audioFile.filePath}');
-        // 清理无效的播放进度
-        await db.delete('playback_progress', where: 'audio_file_id = ?', whereArgs: [audioFile.id]);
-        return;
+      if (!loadToPlayer) {
+        return audioFile;
       }
 
       // 如果当前已经加载了这个音频文件，不需要重新加载
       if (_currentAudioFile?.id == audioFile.id && _currentBookId == bookId) {
         debugPrint('当前已加载该书籍的播放进度，无需重复加载，仅刷新书籍信息');
         await _loadBookInfo(bookId); // 跳过设置更新时需要重新获取书籍数据
-        return;
+        return audioFile;
       }
 
       // 保存当前进度
@@ -715,8 +727,10 @@ class AudioPlayerProvider extends ChangeNotifier {
 
       debugPrint('✅ 已加载书籍 $bookId 的播放进度: ${audioFile.fileName}, 位置: ${_position}ms');
       notifyListeners();
+      return audioFile;
     } catch (e) {
       debugPrint('加载书籍播放进度失败: $e');
+      return null;
     }
   }
 

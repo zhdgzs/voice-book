@@ -743,7 +743,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final bookProvider = context.read<BookProvider>();
 
     // 获取当前书籍ID
-    final currentBookId = audioPlayer.currentBookId;
+    final currentBookId = audioPlayer.currentBookId ?? widget.book?.id;
     if (currentBookId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('当前没有播放的书籍')),
@@ -752,10 +752,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     // 获取当前书籍
-    final book = bookProvider.books.firstWhere(
-      (b) => b.id == currentBookId,
-      orElse: () => throw Exception('未找到当前书籍'),
-    );
+    Book? book;
+    try {
+      book = bookProvider.books.firstWhere((b) => b.id == currentBookId);
+    } catch (_) {
+      book = null;
+    }
+
+    // 如果内存中的书籍列表尚未加载，直接从数据库查询
+    book ??= await bookProvider.getBookById(currentBookId);
+
+    if (book == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('未找到当前书籍，无法更新跳过设置')),
+        );
+      }
+      return;
+    }
 
     int skipStartSeconds = book.skipStartSeconds;
     int skipEndSeconds = book.skipEndSeconds;
