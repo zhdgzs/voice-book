@@ -278,13 +278,29 @@ class NowPlayingScreen extends StatefulWidget {
 }
 
 class _NowPlayingScreenState extends State<NowPlayingScreen> {
+  bool _isInitialized = false;
+
   @override
   void initState() {
     super.initState();
+    // 延迟初始化，确保 Provider 已经准备好
+    _initializePlayer();
+  }
+
+  Future<void> _initializePlayer() async {
+    if (_isInitialized) return;
+    _isInitialized = true;
+
+    // 等待下一帧，确保 widget 树已经构建完成
+    await Future.delayed(Duration.zero);
+    if (!mounted) return;
+
     // 数据库已在 main() 中预初始化，可以安全地恢复播放状态
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<AudioPlayerProvider>().ensureInitialized();
-    });
+    try {
+      await Provider.of<AudioPlayerProvider>(context, listen: false).ensureInitialized();
+    } catch (e) {
+      debugPrint('初始化播放器失败: $e');
+    }
   }
 
   @override
