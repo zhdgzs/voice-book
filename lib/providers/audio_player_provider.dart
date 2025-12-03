@@ -7,6 +7,7 @@ import '../models/audio_file.dart';
 import '../models/book.dart';
 import '../models/playback_progress.dart';
 import '../services/database_service.dart';
+import '../services/wma_audio_service.dart';
 import 'package:sqflite/sqflite.dart';
 
 /// 音频播放器 Provider
@@ -81,8 +82,18 @@ class AudioPlayerProvider extends ChangeNotifier {
 
   AudioPlayerProvider() {
     _initializeAudioSession();
+    _initializeWmaSupport();
     _initializePlayer();
     // 不在构造函数中访问数据库，避免与其他 Provider 的数据库访问冲突
+  }
+
+  /// 初始化 WMA 音频支持
+  Future<void> _initializeWmaSupport() async {
+    try {
+      await WmaAudioService().initialize();
+    } catch (e) {
+      debugPrint('WMA 支持初始化失败: $e');
+    }
   }
 
   /// 确保已初始化（懒加载）
@@ -272,8 +283,26 @@ class AudioPlayerProvider extends ChangeNotifier {
       // 加载书籍信息（用于获取跳过设置）
       await _loadBookInfo(_currentBookId!);
 
+      // 处理 WMA 文件转码
+      String filePath = audioFile.filePath;
+      if (audioFile.filePath.toLowerCase().endsWith('.wma')) {
+        debugPrint('🔄 检测到 WMA 文件，开始转码...');
+        _errorMessage = '正在转换 WMA 格式，请稍候...';
+        notifyListeners();
+
+        try {
+          filePath = await WmaAudioService().transcodeWmaToWav(audioFile.filePath);
+          _errorMessage = null;
+        } catch (e) {
+          _errorMessage = 'WMA 转码失败: $e';
+          _isLoading = false;
+          notifyListeners();
+          rethrow;
+        }
+      }
+
       // 加载音频文件
-      await _audioPlayer.setFilePath(audioFile.filePath);
+      await _audioPlayer.setFilePath(filePath);
 
       // 恢复播放进度
       await _restoreProgress();
