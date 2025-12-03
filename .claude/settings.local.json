@@ -21,7 +21,9 @@
       "Bash(flutter analyze:*)",
       "Bash(git diff:*)",
       "Bash(flutter devices:*)",
-      "Bash(flutter run:*)"
+      "Bash(flutter run:*)",
+      "Bash(git -C \"D:\\Android\\dev\\voice-book2\" log --oneline -20)",
+      "Bash(git -C \"D:\\Android\\dev\\voice-book2\" status)"
     ],
     "deny": [],
     "ask": []

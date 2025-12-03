@@ -59,8 +59,10 @@ class BookProvider extends ChangeNotifier {
 
       _books = maps.map((map) => Book.fromMap(map)).toList();
 
-      // 后台补全缺失的音频时长（不等待，避免阻塞）
-      _updateMissingDurations();
+      // 后台补全缺失的音频时长（仅在有书籍时执行，不等待，避免阻塞）
+      if (_books.isNotEmpty) {
+        _updateMissingDurations();
+      }
     } catch (e) {
       _errorMessage = '加载书籍失败: $e';
       debugPrint(_errorMessage);

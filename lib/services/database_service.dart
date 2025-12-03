@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
@@ -10,6 +11,7 @@ import 'package:path/path.dart';
 class DatabaseService {
   static final DatabaseService _instance = DatabaseService._internal();
   static Database? _database;
+  static Future<Database>? _initializingFuture;
 
   factory DatabaseService() {
     return _instance;
@@ -20,8 +22,22 @@ class DatabaseService {
   /// 获取数据库实例
   Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _initDatabase();
-    return _database!;
+
+    // 如果正在初始化，复用同一个 Future，避免并发 openDatabase
+    if (_initializingFuture != null) {
+      return await _initializingFuture!;
+    }
+
+    _initializingFuture = _initDatabase();
+
+    try {
+      final db = await _initializingFuture!;
+      _database = db;
+      return db;
+    } finally {
+      // 确保 Future 状态被重置，以便后续异常时可以重试
+      _initializingFuture = null;
+    }
   }
 
   /// 初始化数据库
@@ -31,10 +47,28 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
+      onConfigure: _onConfigure,
     );
+  }
+
+  /// 配置数据库
+  Future<void> _onConfigure(Database db) async {
+    // 单独执行 PRAGMA，确保低版本或受限环境下即便失败也能继续启动
+    await _executePragma(db, 'PRAGMA foreign_keys = ON');
+    await _executePragma(db, 'PRAGMA journal_mode = WAL');
+    await _executePragma(db, 'PRAGMA synchronous = NORMAL');
+    await _executePragma(db, 'PRAGMA cache_size = -2000');
+  }
+
+  Future<void> _executePragma(Database db, String statement) async {
+    try {
+      await db.execute(statement);
+    } catch (e) {
+      debugPrint('执行 $statement 失败，使用数据库默认设置: $e');
+    }
   }
 
   /// 创建数据库表
@@ -50,6 +84,8 @@ class DatabaseService {
         total_duration INTEGER DEFAULT 0,
         current_audio_file_id INTEGER,
         is_favorite INTEGER DEFAULT 0,
+        skip_start_seconds INTEGER DEFAULT 0,
+        skip_end_seconds INTEGER DEFAULT 0,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       )
@@ -108,18 +144,30 @@ class DatabaseService {
 
   /// 数据库升级
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // 未来版本升级时在这里处理数据库迁移
-    // 例如：
-    // if (oldVersion < 2) {
-    //   await db.execute('ALTER TABLE books ADD COLUMN new_field TEXT');
-    // }
+    // 从版本 1 升级到版本 2：添加跳过开头/结尾时长字段
+    if (oldVersion < 2) {
+      await db.execute('ALTER TABLE books ADD COLUMN skip_start_seconds INTEGER DEFAULT 0');
+      await db.execute('ALTER TABLE books ADD COLUMN skip_end_seconds INTEGER DEFAULT 0');
+    }
   }
 
   /// 关闭数据库
   Future<void> close() async {
-    final db = await database;
-    await db.close();
-    _database = null;
+    if (_database != null) {
+      await _database!.close();
+      _database = null;
+      return;
+    }
+
+    // 如果数据库正在初始化，等待完成后再关闭，防止泄漏
+    if (_initializingFuture != null) {
+      try {
+        final db = await _initializingFuture!;
+        await db.close();
+      } finally {
+        _database = null;
+      }
+    }
   }
 
   /// 清空所有表数据（用于测试或重置）
@@ -135,8 +183,11 @@ class DatabaseService {
   Future<void> deleteDatabase() async {
     final databasesPath = await getDatabasesPath();
     final path = join(databasesPath, 'voice_book.db');
+    // 确保连接关闭后再删除底层文件
+    await close();
     await databaseFactory.deleteDatabase(path);
     _database = null;
+    _initializingFuture = null;
   }
 
   /// 根据书籍 ID 获取音频文件列表

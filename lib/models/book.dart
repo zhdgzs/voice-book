@@ -26,6 +26,12 @@ class Book {
   /// 是否收藏
   final bool isFavorite;
 
+  /// 跳过开头时长（秒）
+  final int skipStartSeconds;
+
+  /// 跳过结尾时长（秒）
+  final int skipEndSeconds;
+
   /// 创建时间（Unix 时间戳，毫秒）
   final int createdAt;
 
@@ -41,6 +47,8 @@ class Book {
     this.totalDuration = 0,
     this.currentAudioFileId,
     this.isFavorite = false,
+    this.skipStartSeconds = 0,
+    this.skipEndSeconds = 0,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -56,6 +64,8 @@ class Book {
       totalDuration: map['total_duration'] as int? ?? 0,
       currentAudioFileId: map['current_audio_file_id'] as int?,
       isFavorite: (map['is_favorite'] as int? ?? 0) == 1,
+      skipStartSeconds: map['skip_start_seconds'] as int? ?? 0,
+      skipEndSeconds: map['skip_end_seconds'] as int? ?? 0,
       createdAt: map['created_at'] as int,
       updatedAt: map['updated_at'] as int,
     );
@@ -72,6 +82,8 @@ class Book {
       'total_duration': totalDuration,
       'current_audio_file_id': currentAudioFileId,
       'is_favorite': isFavorite ? 1 : 0,
+      'skip_start_seconds': skipStartSeconds,
+      'skip_end_seconds': skipEndSeconds,
       'created_at': createdAt,
       'updated_at': updatedAt,
     };
@@ -87,6 +99,8 @@ class Book {
     int? totalDuration,
     int? currentAudioFileId,
     bool? isFavorite,
+    int? skipStartSeconds,
+    int? skipEndSeconds,
     int? createdAt,
     int? updatedAt,
   }) {
@@ -99,6 +113,8 @@ class Book {
       totalDuration: totalDuration ?? this.totalDuration,
       currentAudioFileId: currentAudioFileId ?? this.currentAudioFileId,
       isFavorite: isFavorite ?? this.isFavorite,
+      skipStartSeconds: skipStartSeconds ?? this.skipStartSeconds,
+      skipEndSeconds: skipEndSeconds ?? this.skipEndSeconds,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -122,6 +138,8 @@ class Book {
         other.totalDuration == totalDuration &&
         other.currentAudioFileId == currentAudioFileId &&
         other.isFavorite == isFavorite &&
+        other.skipStartSeconds == skipStartSeconds &&
+        other.skipEndSeconds == skipEndSeconds &&
         other.createdAt == createdAt &&
         other.updatedAt == updatedAt;
   }
@@ -137,6 +155,8 @@ class Book {
       totalDuration,
       currentAudioFileId,
       isFavorite,
+      skipStartSeconds,
+      skipEndSeconds,
       createdAt,
       updatedAt,
     );

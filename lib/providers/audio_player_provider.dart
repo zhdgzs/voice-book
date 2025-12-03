@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_session/audio_session.dart';
 import '../models/audio_file.dart';
+import '../models/book.dart';
 import '../models/playback_progress.dart';
 import '../services/database_service.dart';
 import 'package:sqflite/sqflite.dart';
@@ -20,7 +21,7 @@ class AudioPlayerProvider extends ChangeNotifier {
   final AudioPlayer _audioPlayer = AudioPlayer();
   final DatabaseService _databaseService = DatabaseService();
 
-  /// 设置 Provider（用于获取跳过时长配置）
+  /// 设置 Provider（用于获取自动播放设置）
   dynamic _settingsProvider;
 
   /// 睡眠定时器 Provider
@@ -31,6 +32,9 @@ class AudioPlayerProvider extends ChangeNotifier {
 
   /// 当前播放的书籍ID
   int? _currentBookId;
+
+  /// 当前书籍对象（用于获取跳过设置）
+  Book? _currentBook;
 
   /// 播放状态
   PlayerState _playerState = PlayerState(false, ProcessingState.idle);
@@ -72,10 +76,20 @@ class AudioPlayerProvider extends ChangeNotifier {
     return (_position / _duration).clamp(0.0, 1.0);
   }
 
+  /// 是否已初始化（恢复上次播放）
+  bool _isInitialized = false;
+
   AudioPlayerProvider() {
     _initializeAudioSession();
     _initializePlayer();
-    _restoreLastPlayback();
+    // 不在构造函数中访问数据库，避免与其他 Provider 的数据库访问冲突
+  }
+
+  /// 确保已初始化（懒加载）
+  Future<void> ensureInitialized() async {
+    if (_isInitialized) return;
+    _isInitialized = true;
+    await _restoreLastPlayback();
   }
 
   /// 初始化音频会话（用于后台播放和通知栏控制）
@@ -89,7 +103,7 @@ class AudioPlayerProvider extends ChangeNotifier {
     }
   }
 
-  /// 设置 SettingsProvider（用于获取跳过时长配置）
+  /// 设置 SettingsProvider（用于获取自动播放设置）
   void setSettingsProvider(dynamic settingsProvider) {
     _settingsProvider = settingsProvider;
   }
@@ -107,24 +121,14 @@ class AudioPlayerProvider extends ChangeNotifier {
     }
   }
 
-  /// 获取跳过开头时长（秒）
+  /// 获取跳过开头时长（秒）- 从当前书籍获取
   int get _skipStartSeconds {
-    if (_settingsProvider == null) return 0;
-    try {
-      return _settingsProvider.skipStartSeconds as int;
-    } catch (e) {
-      return 0;
-    }
+    return _currentBook?.skipStartSeconds ?? 0;
   }
 
-  /// 获取跳过结尾时长（秒）
+  /// 获取跳过结尾时长（秒）- 从当前书籍获取
   int get _skipEndSeconds {
-    if (_settingsProvider == null) return 0;
-    try {
-      return _settingsProvider.skipEndSeconds as int;
-    } catch (e) {
-      return 0;
-    }
+    return _currentBook?.skipEndSeconds ?? 0;
   }
 
   /// 恢复上次播放的音频（仅恢复状态，不自动播放）
@@ -147,6 +151,11 @@ class AudioPlayerProvider extends ChangeNotifier {
         if (await file.exists()) {
           _currentAudioFile = audioFile;
           _currentBookId = result.first['book_id'] as int?;
+
+          // 加载书籍信息（用于获取跳过设置）
+          if (_currentBookId != null) {
+            await _loadBookInfo(_currentBookId!);
+          }
 
           // 加载音频到播放器（但不播放）
           await _audioPlayer.setFilePath(audioFile.filePath);
@@ -259,6 +268,9 @@ class AudioPlayerProvider extends ChangeNotifier {
       // 设置当前音频文件和书籍ID
       _currentAudioFile = audioFile;
       _currentBookId = bookId ?? audioFile.bookId;
+
+      // 加载书籍信息（用于获取跳过设置）
+      await _loadBookInfo(_currentBookId!);
 
       // 加载音频文件
       await _audioPlayer.setFilePath(audioFile.filePath);
@@ -618,6 +630,111 @@ class AudioPlayerProvider extends ChangeNotifier {
     final previousAudio = await _getPreviousAudioFile();
     if (previousAudio != null) {
       await loadAndPlay(previousAudio, bookId: _currentBookId);
+    }
+  }
+
+  /// 加载书籍信息（用于获取跳过设置等）
+  Future<void> _loadBookInfo(int bookId) async {
+    try {
+      final db = await _databaseService.database;
+      final result = await db.query(
+        'books',
+        where: 'id = ?',
+        whereArgs: [bookId],
+      );
+
+      if (result.isNotEmpty) {
+        _currentBook = Book.fromMap(result.first);
+        debugPrint('✅ 已加载书籍信息: ${_currentBook!.title}, 跳过开头: ${_currentBook!.skipStartSeconds}秒, 跳过结尾: ${_currentBook!.skipEndSeconds}秒');
+        notifyListeners(); // 通知监听器更新 UI
+      } else {
+        _currentBook = null;
+        debugPrint('⚠️ 未找到书籍信息: bookId=$bookId');
+      }
+    } catch (e) {
+      debugPrint('❌ 加载书籍信息失败: $e');
+      _currentBook = null;
+    }
+  }
+
+  /// 查询书籍最后一次播放的音频文件（仅返回数据，不修改播放器）
+  Future<AudioFile?> _fetchLastPlayedAudio(int bookId) async {
+    final db = await _databaseService.database;
+    final result = await db.rawQuery('''
+      SELECT af.*, pp.position, pp.playback_speed, b.id as book_id
+      FROM playback_progress pp
+      JOIN audio_files af ON pp.audio_file_id = af.id
+      JOIN books b ON af.book_id = b.id
+      WHERE b.id = ?
+      ORDER BY pp.updated_at DESC
+      LIMIT 1
+    ''', [bookId]);
+
+    if (result.isEmpty) {
+      debugPrint('书籍 $bookId 没有播放进度记录');
+      return null;
+    }
+
+    final audioFile = AudioFile.fromMap(result.first);
+
+    // 验证文件是否存在
+    final file = io.File(audioFile.filePath);
+    if (!await file.exists()) {
+      debugPrint('音频文件不存在: ${audioFile.filePath}');
+      // 清理无效的播放进度
+      await db.delete('playback_progress', where: 'audio_file_id = ?', whereArgs: [audioFile.id]);
+      return null;
+    }
+
+    return audioFile;
+  }
+
+  /// 加载指定书籍的上次播放进度
+  ///
+  /// [loadToPlayer] 为 false 时，仅返回音频信息用于 UI 定位，不会修改播放器状态
+  Future<AudioFile?> loadBookProgress(int bookId, {bool loadToPlayer = true}) async {
+    try {
+      final audioFile = await _fetchLastPlayedAudio(bookId);
+      if (audioFile == null) {
+        // 即使没有播放进度，也需要刷新当前书籍信息（更新跳过设置等）
+        await _loadBookInfo(bookId);
+        notifyListeners();
+        return null;
+      }
+
+      if (!loadToPlayer) {
+        return audioFile;
+      }
+
+      // 如果当前已经加载了这个音频文件，不需要重新加载
+      if (_currentAudioFile?.id == audioFile.id && _currentBookId == bookId) {
+        debugPrint('当前已加载该书籍的播放进度，无需重复加载，仅刷新书籍信息');
+        await _loadBookInfo(bookId); // 跳过设置更新时需要重新获取书籍数据
+        return audioFile;
+      }
+
+      // 保存当前进度
+      await _saveProgress();
+
+      // 设置当前音频文件和书籍ID
+      _currentAudioFile = audioFile;
+      _currentBookId = bookId;
+
+      // 加载书籍信息（用于获取跳过设置）
+      await _loadBookInfo(bookId);
+
+      // 加载音频到播放器（但不播放）
+      await _audioPlayer.setFilePath(audioFile.filePath);
+
+      // 恢复播放进度
+      await _restoreProgress();
+
+      debugPrint('✅ 已加载书籍 $bookId 的播放进度: ${audioFile.fileName}, 位置: ${_position}ms');
+      notifyListeners();
+      return audioFile;
+    } catch (e) {
+      debugPrint('加载书籍播放进度失败: $e');
+      return null;
     }
   }
 

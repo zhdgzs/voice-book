@@ -4,18 +4,25 @@ import 'providers/book_provider.dart';
 import 'providers/audio_player_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/sleep_timer_provider.dart';
+import 'services/database_service.dart';
 import 'utils/constants.dart';
 import 'screens/book_list_screen.dart';
 import 'screens/file_import_screen.dart';
-import 'screens/file_scanner_test_screen.dart';
 import 'screens/player_screen.dart';
-import 'screens/metadata_test_screen.dart';
 import 'models/book.dart';
 import 'models/audio_file.dart';
 
 void main() async {
   // 确保 Flutter 绑定初始化
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 预初始化数据库，避免后续多个 Provider 同时访问导致冲突
+  // 如果底层设备不支持特定 PRAGMA，不影响应用继续运行
+  try {
+    await DatabaseService().database;
+  } catch (e) {
+    debugPrint('数据库预初始化失败，后续使用时将再次尝试: $e');
+  }
 
   // 初始化设置 Provider
   final settingsProvider = SettingsProvider();
@@ -156,10 +163,6 @@ class VoiceBookApp extends StatelessWidget {
                       audioFile: args?['audioFile'] as AudioFile,
                     ),
                   );
-                case '/test-scanner':
-                  return MaterialPageRoute(
-                    builder: (_) => const FileScannerTestScreen(),
-                  );
                 default:
                   return null;
               }
@@ -265,8 +268,33 @@ class _MainScreenState extends State<MainScreen> {
 /// 正在播放页面
 ///
 /// 显示当前播放或上次播放的音频
-class NowPlayingScreen extends StatelessWidget {
+class NowPlayingScreen extends StatefulWidget {
   const NowPlayingScreen({super.key});
+
+  @override
+  State<NowPlayingScreen> createState() => _NowPlayingScreenState();
+}
+
+class _NowPlayingScreenState extends State<NowPlayingScreen> {
+  bool _isInitialized = false;
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializePlayer();
+    });
+  }
+
+  Future<void> _initializePlayer() async {
+    if (_isInitialized || !mounted) return;
+    _isInitialized = true;
+
+    try {
+      await context.read<AudioPlayerProvider>().ensureInitialized();
+    } catch (e) {
+      debugPrint('初始化播放器失败: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -428,86 +456,6 @@ class SettingsScreen extends StatelessWidget {
                             },
                           ),
                         ),
-                        SwitchListTile(
-                          title: const Text('自动播放下一个'),
-                          subtitle: const Text('当前音频播放完成后自动播放下一个'),
-                          value: settings.autoPlay,
-                          onChanged: (value) {
-                            settings.setAutoPlay(value);
-                          },
-                        ),
-                        // 跳过开头设置
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  const Text('跳过开头'),
-                                  Text(
-                                    settings.skipStartSeconds == 0
-                                        ? '不跳过'
-                                        : '${settings.skipStartSeconds} 秒',
-                                    style: TextStyle(
-                                      color: Theme.of(context).colorScheme.primary,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              Slider(
-                                value: settings.skipStartSeconds.toDouble(),
-                                min: 0,
-                                max: 120,
-                                divisions: 120,
-                                label: settings.skipStartSeconds == 0
-                                    ? '不跳过'
-                                    : '${settings.skipStartSeconds}秒',
-                                onChanged: (value) {
-                                  settings.setSkipStartSeconds(value.toInt());
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                        // 跳过结尾设置
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  const Text('跳过结尾'),
-                                  Text(
-                                    settings.skipEndSeconds == 0
-                                        ? '不跳过'
-                                        : '${settings.skipEndSeconds} 秒',
-                                    style: TextStyle(
-                                      color: Theme.of(context).colorScheme.primary,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              Slider(
-                                value: settings.skipEndSeconds.toDouble(),
-                                min: 0,
-                                max: 120,
-                                divisions: 120,
-                                label: settings.skipEndSeconds == 0
-                                    ? '不跳过'
-                                    : '${settings.skipEndSeconds}秒',
-                                onChanged: (value) {
-                                  settings.setSkipEndSeconds(value.toInt());
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
                       ],
                     );
                   },
@@ -537,7 +485,7 @@ class SettingsScreen extends StatelessWidget {
                 ),
                 const ListTile(
                   title: Text('版本'),
-                  subtitle: Text('0.0.1'),
+                  subtitle: Text('1.0.0'),
                 ),
                 const ListTile(
                   title: Text('描述'),
@@ -547,47 +495,6 @@ class SettingsScreen extends StatelessWidget {
               ],
             ),
           ),
-
-          // 开发者选项
-          Card(
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    '开发者选项',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                  ),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.science),
-                  title: const Text('测试文件扫描'),
-                  subtitle: const Text('测试文件扫描和元数据读取功能'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    Navigator.pushNamed(context, '/test-scanner');
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.audio_file),
-                  title: const Text('测试元数据读取'),
-                  subtitle: const Text('选择音频文件查看元数据'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    Navigator.push(context, MaterialPageRoute(
-                      builder: (_) => const MetadataTestScreen(),
-                    ));
-                  },
-                ),
-                const SizedBox(height: 8),
-              ],
-            ),
-          ),
-
           const SizedBox(height: 16),
         ],
       ),

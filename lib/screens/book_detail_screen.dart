@@ -5,6 +5,7 @@ import '../models/audio_file.dart';
 import '../providers/book_provider.dart';
 import '../providers/audio_player_provider.dart';
 import '../widgets/mini_player.dart';
+import '../widgets/skip_settings_dialog.dart';
 import '../main.dart';
 
 /// 书籍详情页面
@@ -30,17 +31,46 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
   final ScrollController _scrollController = ScrollController();
   int? _lastScrolledAudioId; // 记录上次滚动到的音频ID
   bool _isInitialized = false; // 标记是否已初始化
+  int? _pendingScrollAudioId; // 当未加载播放器时用于定位的音频ID
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await context.read<BookProvider>().setCurrentBook(widget.book);
+
+      // 加载该书籍的上次播放进度（如果有且不会打断当前播放）
+      if (widget.book.id != null) {
+        final audioPlayer = context.read<AudioPlayerProvider>();
+        final isPlayingOtherBook = audioPlayer.isPlaying &&
+            audioPlayer.currentBookId != null &&
+            audioPlayer.currentBookId != widget.book.id;
+
+        if (isPlayingOtherBook) {
+          debugPrint('⚠️ 正在播放其他书籍，进入详情页时不加载播放进度');
+          final previewAudio = await audioPlayer.loadBookProgress(
+            widget.book.id!,
+            loadToPlayer: false,
+          );
+          _pendingScrollAudioId = previewAudio?.id;
+        } else {
+          await audioPlayer.loadBookProgress(widget.book.id!);
+          _pendingScrollAudioId = null;
+        }
+      }
+
       _isInitialized = true;
       if (mounted) {
         // 延迟一帧，确保列表完全渲染
         await Future.delayed(const Duration(milliseconds: 100));
-        if (mounted) _scrollToCurrentAudio();
+        if (mounted) {
+          if (_pendingScrollAudioId != null) {
+            _scrollToAudioId(_pendingScrollAudioId!);
+            _pendingScrollAudioId = null;
+          } else {
+            _scrollToCurrentAudio();
+          }
+        }
       }
     });
   }
@@ -91,21 +121,29 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
       return;
     }
 
-    final index = audioFiles.indexWhere((f) => f.id == currentAudioId);
+    _scrollToAudioId(currentAudioId);
+  }
+
+  /// 根据指定音频ID滚动
+  void _scrollToAudioId(int audioId) {
+    final bookProvider = context.read<BookProvider>();
+    final audioFiles = bookProvider.currentBookAudioFiles;
+
+    final index = audioFiles.indexWhere((f) => f.id == audioId);
     if (index < 0) {
-      debugPrint('⚠️ 未找到当前音频，ID: $currentAudioId');
+      debugPrint('⚠️ 未找到音频，ID: $audioId');
       return;
     }
 
     // 如果是第一个音频，不需要滚动
     if (index == 0) {
       debugPrint('✅ 当前音频是第一个，无需滚动');
-      _lastScrolledAudioId = currentAudioId;
+      _lastScrolledAudioId = audioId;
       return;
     }
 
     // 记录已滚动到的音频ID
-    _lastScrolledAudioId = currentAudioId;
+    _lastScrolledAudioId = audioId;
 
     // 确保 ScrollController 已附加到滚动视图
     if (!_scrollController.hasClients) {
@@ -149,6 +187,17 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
       targetOffset,
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
+    );
+  }
+
+  /// 显示跳过设置对话框
+  Future<void> _showSkipSettingsDialog() async {
+    await showDialog(
+      context: context,
+      builder: (context) => SkipSettingsDialog(
+        bookId: widget.book.id!,
+        isFromPlayer: false,
+      ),
     );
   }
 
@@ -292,6 +341,9 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
           PopupMenuButton<String>(
             onSelected: (value) {
               switch (value) {
+                case 'skip_settings':
+                  _showSkipSettingsDialog();
+                  break;
                 case 'edit':
                   _showEditDialog();
                   break;
@@ -301,6 +353,16 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
               }
             },
             itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'skip_settings',
+                child: Row(
+                  children: [
+                    Icon(Icons.skip_next),
+                    SizedBox(width: 8),
+                    Text('跳过设置'),
+                  ],
+                ),
+              ),
               const PopupMenuItem(
                 value: 'edit',
                 child: Row(
