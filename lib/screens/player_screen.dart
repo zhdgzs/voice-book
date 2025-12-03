@@ -7,6 +7,7 @@ import '../providers/audio_player_provider.dart';
 import '../providers/book_provider.dart';
 import '../providers/sleep_timer_provider.dart';
 import '../widgets/sleep_timer_dialog.dart';
+import '../widgets/skip_settings_dialog.dart';
 import '../widgets/bookmark_list_dialog.dart';
 import '../models/bookmark.dart';
 import '../services/database_service.dart';
@@ -740,7 +741,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// 显示跳过设置对话框
   Future<void> _showSkipSettings(BuildContext context) async {
     final audioPlayer = context.read<AudioPlayerProvider>();
-    final bookProvider = context.read<BookProvider>();
 
     // 获取当前书籍ID
     final currentBookId = audioPlayer.currentBookId ?? widget.book?.id;
@@ -751,125 +751,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
       return;
     }
 
-    // 获取当前书籍
-    Book? book;
-    try {
-      book = bookProvider.books.firstWhere((b) => b.id == currentBookId);
-    } catch (_) {
-      book = null;
-    }
-
-    // 如果内存中的书籍列表尚未加载，直接从数据库查询
-    book ??= await bookProvider.getBookById(currentBookId);
-
-    if (book == null) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('未找到当前书籍，无法更新跳过设置')),
-        );
-      }
-      return;
-    }
-
-    final currentBook = book;
-
-    int skipStartSeconds = currentBook.skipStartSeconds;
-    int skipEndSeconds = currentBook.skipEndSeconds;
-
-    final confirmed = await showDialog<bool>(
+    await showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: const Text('跳过设置'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '为《${currentBook.title}》设置跳过开头和结尾的时长',
-                  style: const TextStyle(fontSize: 14, color: Colors.grey),
-                ),
-                const SizedBox(height: 24),
-                // 跳过开头
-                Text(
-                  '跳过开头: ${skipStartSeconds == 0 ? '不跳过' : '$skipStartSeconds 秒'}',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                Slider(
-                  value: skipStartSeconds.toDouble(),
-                  min: 0,
-                  max: 120,
-                  divisions: 120,
-                  label: skipStartSeconds == 0 ? '不跳过' : '$skipStartSeconds秒',
-                  onChanged: (value) {
-                    setState(() {
-                      skipStartSeconds = value.toInt();
-                    });
-                  },
-                ),
-                const SizedBox(height: 16),
-                // 跳过结尾
-                Text(
-                  '跳过结尾: ${skipEndSeconds == 0 ? '不跳过' : '$skipEndSeconds 秒'}',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                Slider(
-                  value: skipEndSeconds.toDouble(),
-                  min: 0,
-                  max: 120,
-                  divisions: 120,
-                  label: skipEndSeconds == 0 ? '不跳过' : '$skipEndSeconds秒',
-                  onChanged: (value) {
-                    setState(() {
-                      skipEndSeconds = value.toInt();
-                    });
-                  },
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('保存'),
-            ),
-          ],
-        ),
+      builder: (context) => SkipSettingsDialog(
+        bookId: currentBookId,
+        isFromPlayer: true,
       ),
     );
-
-    if (confirmed == true && context.mounted) {
-      final updatedBook = currentBook.copyWith(
-        skipStartSeconds: skipStartSeconds,
-        skipEndSeconds: skipEndSeconds,
-        updatedAt: DateTime.now().millisecondsSinceEpoch,
-      );
-
-      final success = await bookProvider.updateBook(updatedBook);
-      if (success) {
-        // 重新加载书籍信息到播放器（这会触发 notifyListeners）
-        await audioPlayer.loadBookProgress(currentBookId);
-
-        // 显示成功提示
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('跳过设置已更新')),
-          );
-        }
-      } else if (context.mounted) {
-        // 更新失败时显示错误提示
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('跳过设置更新失败')),
-        );
-      }
-    }
   }
 
   /// 构建睡眠定时器按钮
