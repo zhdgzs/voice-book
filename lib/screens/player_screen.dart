@@ -771,8 +771,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
       return;
     }
 
-    int skipStartSeconds = book.skipStartSeconds;
-    int skipEndSeconds = book.skipEndSeconds;
+    final currentBook = book;
+
+    int skipStartSeconds = currentBook.skipStartSeconds;
+    int skipEndSeconds = currentBook.skipEndSeconds;
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -785,7 +787,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '为《${book.title}》设置跳过开头和结尾的时长',
+                  '为《${currentBook.title}》设置跳过开头和结尾的时长',
                   style: const TextStyle(fontSize: 14, color: Colors.grey),
                 ),
                 const SizedBox(height: 24),
@@ -844,7 +846,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
 
     if (confirmed == true && context.mounted) {
-      final updatedBook = book.copyWith(
+      final updatedBook = currentBook.copyWith(
         skipStartSeconds: skipStartSeconds,
         skipEndSeconds: skipEndSeconds,
         updatedAt: DateTime.now().millisecondsSinceEpoch,
