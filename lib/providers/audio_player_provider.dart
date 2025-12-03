@@ -695,6 +695,9 @@ class AudioPlayerProvider extends ChangeNotifier {
     try {
       final audioFile = await _fetchLastPlayedAudio(bookId);
       if (audioFile == null) {
+        // 即使没有播放进度，也需要刷新当前书籍信息（更新跳过设置等）
+        await _loadBookInfo(bookId);
+        notifyListeners();
         return null;
       }
 
