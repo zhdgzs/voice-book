@@ -853,12 +853,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
       );
 
       final success = await bookProvider.updateBook(updatedBook);
-      if (success && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('跳过设置已更新')),
-        );
-        // 重新加载书籍信息到播放器
+      if (success) {
+        // 重新加载书籍信息到播放器（这会触发 notifyListeners）
         await audioPlayer.loadBookProgress(currentBookId);
+
+        // 显示成功提示
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('跳过设置已更新')),
+          );
+        }
+      } else if (context.mounted) {
+        // 更新失败时显示错误提示
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('跳过设置更新失败')),
+        );
       }
     }
   }

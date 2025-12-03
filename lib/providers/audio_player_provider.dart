@@ -646,6 +646,7 @@ class AudioPlayerProvider extends ChangeNotifier {
       if (result.isNotEmpty) {
         _currentBook = Book.fromMap(result.first);
         debugPrint('✅ 已加载书籍信息: ${_currentBook!.title}, 跳过开头: ${_currentBook!.skipStartSeconds}秒, 跳过结尾: ${_currentBook!.skipEndSeconds}秒');
+        notifyListeners(); // 通知监听器更新 UI
       } else {
         _currentBook = null;
         debugPrint('⚠️ 未找到书籍信息: bookId=$bookId');
