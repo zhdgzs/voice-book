@@ -37,9 +37,18 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await context.read<BookProvider>().setCurrentBook(widget.book);
 
-      // 加载该书籍的上次播放进度（如果有）
+      // 加载该书籍的上次播放进度（如果有且不会打断当前播放）
       if (widget.book.id != null) {
-        await context.read<AudioPlayerProvider>().loadBookProgress(widget.book.id!);
+        final audioPlayer = context.read<AudioPlayerProvider>();
+        final isPlayingOtherBook = audioPlayer.isPlaying &&
+            audioPlayer.currentBookId != null &&
+            audioPlayer.currentBookId != widget.book.id;
+
+        if (isPlayingOtherBook) {
+          debugPrint('⚠️ 正在播放其他书籍，进入详情页时不加载播放进度');
+        } else {
+          await audioPlayer.loadBookProgress(widget.book.id!);
+        }
       }
 
       _isInitialized = true;

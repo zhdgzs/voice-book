@@ -692,7 +692,8 @@ class AudioPlayerProvider extends ChangeNotifier {
 
       // 如果当前已经加载了这个音频文件，不需要重新加载
       if (_currentAudioFile?.id == audioFile.id && _currentBookId == bookId) {
-        debugPrint('当前已加载该书籍的播放进度，无需重复加载');
+        debugPrint('当前已加载该书籍的播放进度，无需重复加载，仅刷新书籍信息');
+        await _loadBookInfo(bookId); // 跳过设置更新时需要重新获取书籍数据
         return;
       }
 
