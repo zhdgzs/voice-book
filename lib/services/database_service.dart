@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
@@ -40,14 +41,19 @@ class DatabaseService {
 
   /// 配置数据库
   Future<void> _onConfigure(Database db) async {
-    // 启用外键约束
-    await db.execute('PRAGMA foreign_keys = ON');
-    // 启用 WAL 模式以支持并发读写，避免数据库锁定
-    await db.execute('PRAGMA journal_mode = WAL');
-    // 设置同步模式为 NORMAL，平衡性能和安全性
-    await db.execute('PRAGMA synchronous = NORMAL');
-    // 设置缓存大小（单位：页，负数表示 KB）
-    await db.execute('PRAGMA cache_size = -2000'); // 2MB 缓存
+    // 单独执行 PRAGMA，确保低版本或受限环境下即便失败也能继续启动
+    await _executePragma(db, 'PRAGMA foreign_keys = ON');
+    await _executePragma(db, 'PRAGMA journal_mode = WAL');
+    await _executePragma(db, 'PRAGMA synchronous = NORMAL');
+    await _executePragma(db, 'PRAGMA cache_size = -2000');
+  }
+
+  Future<void> _executePragma(Database db, String statement) async {
+    try {
+      await db.execute(statement);
+    } catch (e) {
+      debugPrint('执行 $statement 失败，使用数据库默认设置: $e');
+    }
   }
 
   /// 创建数据库表

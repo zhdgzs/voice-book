@@ -19,8 +19,12 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // 预初始化数据库，避免后续多个 Provider 同时访问导致冲突
-  // 这个操作很快（10-30ms），且能避免后续的并发问题
-  await DatabaseService().database;
+  // 如果底层设备不支持特定 PRAGMA，不影响应用继续运行
+  try {
+    await DatabaseService().database;
+  } catch (e) {
+    debugPrint('数据库预初始化失败，后续使用时将再次尝试: $e');
+  }
 
   // 初始化设置 Provider
   final settingsProvider = SettingsProvider();
@@ -279,25 +283,20 @@ class NowPlayingScreen extends StatefulWidget {
 
 class _NowPlayingScreenState extends State<NowPlayingScreen> {
   bool _isInitialized = false;
-
   @override
   void initState() {
     super.initState();
-    // 延迟初始化，确保 Provider 已经准备好
-    _initializePlayer();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializePlayer();
+    });
   }
 
   Future<void> _initializePlayer() async {
-    if (_isInitialized) return;
+    if (_isInitialized || !mounted) return;
     _isInitialized = true;
 
-    // 等待下一帧，确保 widget 树已经构建完成
-    await Future.delayed(Duration.zero);
-    if (!mounted) return;
-
-    // 数据库已在 main() 中预初始化，可以安全地恢复播放状态
     try {
-      await Provider.of<AudioPlayerProvider>(context, listen: false).ensureInitialized();
+      await context.read<AudioPlayerProvider>().ensureInitialized();
     } catch (e) {
       debugPrint('初始化播放器失败: $e');
     }
