@@ -8,9 +8,7 @@ import 'services/database_service.dart';
 import 'utils/constants.dart';
 import 'screens/book_list_screen.dart';
 import 'screens/file_import_screen.dart';
-import 'screens/file_scanner_test_screen.dart';
 import 'screens/player_screen.dart';
-import 'screens/metadata_test_screen.dart';
 import 'models/book.dart';
 import 'models/audio_file.dart';
 
@@ -164,10 +162,6 @@ class VoiceBookApp extends StatelessWidget {
                       book: args?['book'] as Book?,
                       audioFile: args?['audioFile'] as AudioFile,
                     ),
-                  );
-                case '/test-scanner':
-                  return MaterialPageRoute(
-                    builder: (_) => const FileScannerTestScreen(),
                   );
                 default:
                   return null;
@@ -462,14 +456,6 @@ class SettingsScreen extends StatelessWidget {
                             },
                           ),
                         ),
-                        SwitchListTile(
-                          title: const Text('自动播放下一个'),
-                          subtitle: const Text('当前音频播放完成后自动播放下一个'),
-                          value: settings.autoPlay,
-                          onChanged: (value) {
-                            settings.setAutoPlay(value);
-                          },
-                        ),
                       ],
                     );
                   },
@@ -499,7 +485,7 @@ class SettingsScreen extends StatelessWidget {
                 ),
                 const ListTile(
                   title: Text('版本'),
-                  subtitle: Text('0.0.1'),
+                  subtitle: Text('1.0.0'),
                 ),
                 const ListTile(
                   title: Text('描述'),
@@ -509,47 +495,6 @@ class SettingsScreen extends StatelessWidget {
               ],
             ),
           ),
-
-          // 开发者选项
-          Card(
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    '开发者选项',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                  ),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.science),
-                  title: const Text('测试文件扫描'),
-                  subtitle: const Text('测试文件扫描和元数据读取功能'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    Navigator.pushNamed(context, '/test-scanner');
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.audio_file),
-                  title: const Text('测试元数据读取'),
-                  subtitle: const Text('选择音频文件查看元数据'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    Navigator.push(context, MaterialPageRoute(
-                      builder: (_) => const MetadataTestScreen(),
-                    ));
-                  },
-                ),
-                const SizedBox(height: 8),
-              ],
-            ),
-          ),
-
           const SizedBox(height: 16),
         ],
       ),

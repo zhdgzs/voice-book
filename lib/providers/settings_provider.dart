@@ -21,7 +21,7 @@ class SettingsProvider extends ChangeNotifier {
   /// 默认播放速度
   double _defaultPlaybackSpeed = 1.0;
 
-  /// 是否自动播放
+  /// 是否自动播放（始终为 true，不可修改）
   bool _autoPlay = true;
 
   /// 睡眠定时器时长（分钟）
@@ -86,13 +86,6 @@ class SettingsProvider extends ChangeNotifier {
   Future<void> setDefaultPlaybackSpeed(double speed) async {
     _defaultPlaybackSpeed = speed;
     await _prefs?.setDouble(_keyDefaultPlaybackSpeed, speed);
-    notifyListeners();
-  }
-
-  /// 设置自动播放
-  Future<void> setAutoPlay(bool value) async {
-    _autoPlay = value;
-    await _prefs?.setBool(_keyAutoPlay, value);
     notifyListeners();
   }
 
