@@ -76,10 +76,20 @@ class AudioPlayerProvider extends ChangeNotifier {
     return (_position / _duration).clamp(0.0, 1.0);
   }
 
+  /// 是否已初始化（恢复上次播放）
+  bool _isInitialized = false;
+
   AudioPlayerProvider() {
     _initializeAudioSession();
     _initializePlayer();
-    _restoreLastPlayback();
+    // 不在构造函数中访问数据库，避免与其他 Provider 的数据库访问冲突
+  }
+
+  /// 确保已初始化（懒加载）
+  Future<void> ensureInitialized() async {
+    if (_isInitialized) return;
+    _isInitialized = true;
+    await _restoreLastPlayback();
   }
 
   /// 初始化音频会话（用于后台播放和通知栏控制）

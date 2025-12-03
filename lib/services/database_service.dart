@@ -34,7 +34,20 @@ class DatabaseService {
       version: 2,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
+      onConfigure: _onConfigure,
     );
+  }
+
+  /// 配置数据库
+  Future<void> _onConfigure(Database db) async {
+    // 启用外键约束
+    await db.execute('PRAGMA foreign_keys = ON');
+    // 启用 WAL 模式以支持并发读写，避免数据库锁定
+    await db.execute('PRAGMA journal_mode = WAL');
+    // 设置同步模式为 NORMAL，平衡性能和安全性
+    await db.execute('PRAGMA synchronous = NORMAL');
+    // 设置缓存大小（单位：页，负数表示 KB）
+    await db.execute('PRAGMA cache_size = -2000'); // 2MB 缓存
   }
 
   /// 创建数据库表

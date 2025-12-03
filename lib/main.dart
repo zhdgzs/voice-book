@@ -4,6 +4,7 @@ import 'providers/book_provider.dart';
 import 'providers/audio_player_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/sleep_timer_provider.dart';
+import 'services/database_service.dart';
 import 'utils/constants.dart';
 import 'screens/book_list_screen.dart';
 import 'screens/file_import_screen.dart';
@@ -16,6 +17,10 @@ import 'models/audio_file.dart';
 void main() async {
   // 确保 Flutter 绑定初始化
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 预初始化数据库，避免后续多个 Provider 同时访问导致冲突
+  // 这个操作很快（10-30ms），且能避免后续的并发问题
+  await DatabaseService().database;
 
   // 初始化设置 Provider
   final settingsProvider = SettingsProvider();
@@ -265,8 +270,22 @@ class _MainScreenState extends State<MainScreen> {
 /// 正在播放页面
 ///
 /// 显示当前播放或上次播放的音频
-class NowPlayingScreen extends StatelessWidget {
+class NowPlayingScreen extends StatefulWidget {
   const NowPlayingScreen({super.key});
+
+  @override
+  State<NowPlayingScreen> createState() => _NowPlayingScreenState();
+}
+
+class _NowPlayingScreenState extends State<NowPlayingScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // 数据库已在 main() 中预初始化，可以安全地恢复播放状态
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<AudioPlayerProvider>().ensureInitialized();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
