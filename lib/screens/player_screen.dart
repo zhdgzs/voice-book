@@ -5,7 +5,6 @@ import '../models/audio_file.dart';
 import '../models/book.dart';
 import '../providers/audio_player_provider.dart';
 import '../providers/book_provider.dart';
-import '../providers/settings_provider.dart';
 import '../providers/sleep_timer_provider.dart';
 import '../widgets/sleep_timer_dialog.dart';
 import '../widgets/bookmark_list_dialog.dart';
@@ -739,40 +738,113 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   /// 显示跳过设置对话框
-  void _showSkipSettings(BuildContext context) {
-    showDialog(
+  Future<void> _showSkipSettings(BuildContext context) async {
+    final audioPlayer = context.read<AudioPlayerProvider>();
+    final bookProvider = context.read<BookProvider>();
+
+    // 获取当前书籍ID
+    final currentBookId = audioPlayer.currentBookId;
+    if (currentBookId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('当前没有播放的书籍')),
+      );
+      return;
+    }
+
+    // 获取当前书籍
+    final book = bookProvider.books.firstWhere(
+      (b) => b.id == currentBookId,
+      orElse: () => throw Exception('未找到当前书籍'),
+    );
+
+    int skipStartSeconds = book.skipStartSeconds;
+    int skipEndSeconds = book.skipEndSeconds;
+
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
           title: const Text('跳过设置'),
           content: SingleChildScrollView(
-            child: Consumer<SettingsProvider>(
-              builder: (context, settings, child) {
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 说明文字
-                    Text(
-                      '自动跳过音频开头和结尾的指定时长，适用于跳过片头片尾广告。',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
-                    ),
-                  ],
-                );
-              },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '为《${book.title}》设置跳过开头和结尾的时长',
+                  style: const TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+                const SizedBox(height: 24),
+                // 跳过开头
+                Text(
+                  '跳过开头: ${skipStartSeconds == 0 ? '不跳过' : '$skipStartSeconds 秒'}',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Slider(
+                  value: skipStartSeconds.toDouble(),
+                  min: 0,
+                  max: 120,
+                  divisions: 120,
+                  label: skipStartSeconds == 0 ? '不跳过' : '$skipStartSeconds秒',
+                  onChanged: (value) {
+                    setState(() {
+                      skipStartSeconds = value.toInt();
+                    });
+                  },
+                ),
+                const SizedBox(height: 16),
+                // 跳过结尾
+                Text(
+                  '跳过结尾: ${skipEndSeconds == 0 ? '不跳过' : '$skipEndSeconds 秒'}',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Slider(
+                  value: skipEndSeconds.toDouble(),
+                  min: 0,
+                  max: 120,
+                  divisions: 120,
+                  label: skipEndSeconds == 0 ? '不跳过' : '$skipEndSeconds秒',
+                  onChanged: (value) {
+                    setState(() {
+                      skipEndSeconds = value.toInt();
+                    });
+                  },
+                ),
+              ],
             ),
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('关闭'),
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('保存'),
             ),
           ],
-        );
-      },
+        ),
+      ),
     );
+
+    if (confirmed == true && context.mounted) {
+      final updatedBook = book.copyWith(
+        skipStartSeconds: skipStartSeconds,
+        skipEndSeconds: skipEndSeconds,
+        updatedAt: DateTime.now().millisecondsSinceEpoch,
+      );
+
+      final success = await bookProvider.updateBook(updatedBook);
+      if (success && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('跳过设置已更新')),
+        );
+        // 重新加载书籍信息到播放器
+        await audioPlayer.loadBookProgress(currentBookId);
+      }
+    }
   }
 
   /// 构建睡眠定时器按钮

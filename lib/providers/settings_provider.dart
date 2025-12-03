@@ -22,7 +22,7 @@ class SettingsProvider extends ChangeNotifier {
   double _defaultPlaybackSpeed = 1.0;
 
   /// 是否自动播放
-  bool _autoPlay = false;
+  bool _autoPlay = true;
 
   /// 睡眠定时器时长（分钟）
   int _sleepTimerDuration = 30;
@@ -107,7 +107,7 @@ class SettingsProvider extends ChangeNotifier {
   Future<void> resetSettings() async {
     _themeMode = ThemeMode.system;
     _defaultPlaybackSpeed = 1.0;
-    _autoPlay = false;
+    _autoPlay = true;
     _sleepTimerDuration = 30;
 
     await _prefs?.clear();

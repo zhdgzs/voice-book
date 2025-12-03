@@ -190,8 +190,8 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                 Slider(
                   value: skipStartSeconds.toDouble(),
                   min: 0,
-                  max: 60,
-                  divisions: 12,
+                  max: 120,
+                  divisions: 120,
                   label: skipStartSeconds == 0 ? '不跳过' : '$skipStartSeconds秒',
                   onChanged: (value) {
                     setState(() {
@@ -209,8 +209,8 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                 Slider(
                   value: skipEndSeconds.toDouble(),
                   min: 0,
-                  max: 60,
-                  divisions: 12,
+                  max: 120,
+                  divisions: 120,
                   label: skipEndSeconds == 0 ? '不跳过' : '$skipEndSeconds秒',
                   onChanged: (value) {
                     setState(() {
