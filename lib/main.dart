@@ -25,6 +25,7 @@ void main() async {
     androidNotificationOngoing: true,
     androidNotificationIcon: 'mipmap/ic_launcher',
     androidShowNotificationBadge: true,
+    // 注意：通知栏按钮会根据播放列表自动显示（上一个、播放/暂停、下一个）
   );
 
   // 预初始化数据库，避免后续多个 Provider 同时访问导致冲突
