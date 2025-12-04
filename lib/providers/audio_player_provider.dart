@@ -82,18 +82,22 @@ class AudioPlayerProvider extends ChangeNotifier {
 
   AudioPlayerProvider() {
     _initializeAudioSession();
-    _initializeWmaSupport();
     _initializePlayer();
     // 不在构造函数中访问数据库，避免与其他 Provider 的数据库访问冲突
+    // WMA 支持延迟初始化，避免阻塞应用启动
+    _initializeWmaSupportAsync();
   }
 
-  /// 初始化 WMA 音频支持
-  Future<void> _initializeWmaSupport() async {
-    try {
-      await WmaAudioService().initialize();
-    } catch (e) {
-      debugPrint('WMA 支持初始化失败: $e');
-    }
+  /// 初始化 WMA 音频支持（异步，不阻塞构造函数）
+  void _initializeWmaSupportAsync() {
+    Future.microtask(() async {
+      try {
+        await WmaAudioService().initialize();
+        debugPrint('✅ WMA 音频支持已初始化');
+      } catch (e) {
+        debugPrint('⚠️ WMA 支持初始化失败（不影响其他格式播放）: $e');
+      }
+    });
   }
 
   /// 确保已初始化（懒加载）
@@ -291,12 +295,27 @@ class AudioPlayerProvider extends ChangeNotifier {
         notifyListeners();
 
         try {
-          filePath = await WmaAudioService().transcodeWmaToWav(audioFile.filePath);
+          // 确保 WMA 服务已初始化
+          if (!WmaAudioService().isInitialized) {
+            await WmaAudioService().initialize();
+          }
+
+          // 转码，设置 30 秒超时
+          filePath = await WmaAudioService()
+              .transcodeWmaToWav(audioFile.filePath)
+              .timeout(
+                const Duration(seconds: 30),
+                onTimeout: () {
+                  throw Exception('WMA 转码超时（30秒）');
+                },
+              );
           _errorMessage = null;
+          debugPrint('✅ WMA 转码完成: $filePath');
         } catch (e) {
-          _errorMessage = 'WMA 转码失败: $e';
+          _errorMessage = 'WMA 转码失败: $e\n\n请尝试使用其他格式的音频文件';
           _isLoading = false;
           notifyListeners();
+          debugPrint('❌ WMA 转码失败: $e');
           rethrow;
         }
       }

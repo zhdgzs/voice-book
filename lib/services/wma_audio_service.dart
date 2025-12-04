@@ -21,11 +21,18 @@ class WmaAudioService {
 
     try {
       _cacheDir = await getTemporaryDirectory();
+
+      // 确保缓存目录存在
+      if (!await _cacheDir.exists()) {
+        await _cacheDir.create(recursive: true);
+      }
+
       debugPrint('✅ WMA 音频服务已初始化，缓存目录: ${_cacheDir.path}');
       _isInitialized = true;
     } catch (e) {
       debugPrint('❌ WMA 音频服务初始化失败: $e');
-      rethrow;
+      // 不抛出异常，允许应用继续运行（只是不支持 WMA）
+      _isInitialized = false;
     }
   }
 
@@ -33,11 +40,17 @@ class WmaAudioService {
   /// 返回转码后的文件路径
   Future<String> transcodeWmaToWav(String wmaFilePath) async {
     if (!_isInitialized) {
-      await initialize();
+      throw Exception('WMA 音频服务未初始化，请先调用 initialize()');
     }
 
     try {
-      final fileName = File(wmaFilePath).path.split('/').last.replaceAll('.wma', '.wav');
+      // 检查源文件是否存在
+      final sourceFile = File(wmaFilePath);
+      if (!await sourceFile.exists()) {
+        throw Exception('源文件不存在: $wmaFilePath');
+      }
+
+      final fileName = wmaFilePath.split('/').last.replaceAll('.wma', '.wav');
       final outputPath = '${_cacheDir.path}/$fileName';
 
       // 如果转码文件已存在，直接返回
@@ -47,19 +60,27 @@ class WmaAudioService {
       }
 
       debugPrint('🔄 开始转码 WMA 文件: $wmaFilePath');
+      debugPrint('📁 输出路径: $outputPath');
 
       // 使用 FFmpeg 转码 WMA 为 WAV
-      final session = await FFmpegKit.execute(
-        '-i "$wmaFilePath" -acodec pcm_s16le -ar 44100 "$outputPath"',
-      );
+      final command = '-i "$wmaFilePath" -acodec pcm_s16le -ar 44100 "$outputPath"';
+      debugPrint('🎬 FFmpeg 命令: $command');
+
+      final session = await FFmpegKit.execute(command);
 
       final returnCode = await session.getReturnCode();
       if (returnCode?.getValue() == 0) {
-        debugPrint('✅ WMA 转码成功: $outputPath');
-        return outputPath;
+        // 验证输出文件是否存在
+        if (await File(outputPath).exists()) {
+          debugPrint('✅ WMA 转码成功: $outputPath');
+          return outputPath;
+        } else {
+          throw Exception('转码完成但输出文件不存在');
+        }
       } else {
         final logs = await session.getLogsAsString();
-        throw Exception('FFmpeg 转码失败: $logs');
+        debugPrint('❌ FFmpeg 日志: $logs');
+        throw Exception('FFmpeg 返回错误代码: ${returnCode?.getValue()}');
       }
     } catch (e) {
       debugPrint('❌ WMA 转码失败: $e');
