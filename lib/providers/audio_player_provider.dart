@@ -156,10 +156,11 @@ class AudioPlayerProvider extends ChangeNotifier {
           // 加载书籍信息（用于获取跳过设置）
           if (_currentBookId != null) {
             await _loadBookInfo(_currentBookId!);
+
+            // 加载书籍的所有音频文件作为播放列表
+            await _loadBookPlaylist(audioFile, _currentBookId!);
           }
 
-          // 加载书籍的所有音频文件作为播放列表（支持通知栏按钮）
-          await _loadBookPlaylist(audioFile);
           await _restoreProgress();
 
           notifyListeners();
@@ -274,7 +275,7 @@ class AudioPlayerProvider extends ChangeNotifier {
       await _loadBookInfo(_currentBookId!);
 
       // 加载书籍的所有音频文件作为播放列表（支持通知栏按钮）
-      await _loadBookPlaylist(audioFile);
+      await _loadBookPlaylist(audioFile, _currentBookId!);
 
       // 恢复播放进度
       await _restoreProgress();
@@ -725,7 +726,7 @@ class AudioPlayerProvider extends ChangeNotifier {
       await _loadBookInfo(bookId);
 
       // 加载书籍的所有音频文件作为播放列表（支持通知栏按钮）
-      await _loadBookPlaylist(audioFile);
+      await _loadBookPlaylist(audioFile, bookId);
 
       // 恢复播放进度
       await _restoreProgress();
@@ -740,17 +741,13 @@ class AudioPlayerProvider extends ChangeNotifier {
   }
 
   /// 加载书籍的所有音频作为播放列表（支持通知栏的上一个/下一个按钮）
-  ///
-  /// 使用懒加载（useLazyPreparation: true）以节省内存
-  Future<void> _loadBookPlaylist(AudioFile currentAudio) async {
+  Future<void> _loadBookPlaylist(AudioFile currentAudio, int bookId) async {
     try {
-      if (_currentBookId == null) return;
-
       final db = await _databaseService.database;
       final audioFileMaps = await db.query(
         'audio_files',
         where: 'book_id = ?',
-        whereArgs: [_currentBookId],
+        whereArgs: [bookId],
         orderBy: 'sort_order ASC, file_name ASC',
       );
 
@@ -773,8 +770,7 @@ class AudioPlayerProvider extends ChangeNotifier {
       await _audioPlayer.setAudioSources(
         playlist,
         initialIndex: currentIndex >= 0 ? currentIndex : 0,
-        initialPosition: Duration.zero,
-        preload: false, // 不预加载其他音频
+        preload: false, // 懒加载：只加载当前音频，节省内存
       );
     } catch (e) {
       debugPrint('❌ 加载播放列表失败: $e');
