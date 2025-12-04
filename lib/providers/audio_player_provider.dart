@@ -2,6 +2,7 @@ import 'dart:io' as io;
 
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 import 'package:audio_session/audio_session.dart';
 import '../models/audio_file.dart';
 import '../models/book.dart';
@@ -157,8 +158,10 @@ class AudioPlayerProvider extends ChangeNotifier {
             await _loadBookInfo(_currentBookId!);
           }
 
-          // 加载音频到播放器（但不播放）
-          await _audioPlayer.setFilePath(audioFile.filePath);
+          // 加载音频到播放器（但不播放），使用 AudioSource 支持通知栏
+          await _audioPlayer.setAudioSource(
+            _createAudioSource(audioFile, _currentBook),
+          );
           await _restoreProgress();
 
           notifyListeners();
@@ -272,8 +275,10 @@ class AudioPlayerProvider extends ChangeNotifier {
       // 加载书籍信息（用于获取跳过设置）
       await _loadBookInfo(_currentBookId!);
 
-      // 加载音频文件
-      await _audioPlayer.setFilePath(audioFile.filePath);
+      // 加载音频文件，使用 AudioSource 支持通知栏
+      await _audioPlayer.setAudioSource(
+        _createAudioSource(audioFile, _currentBook),
+      );
 
       // 恢复播放进度
       await _restoreProgress();
@@ -723,8 +728,10 @@ class AudioPlayerProvider extends ChangeNotifier {
       // 加载书籍信息（用于获取跳过设置）
       await _loadBookInfo(bookId);
 
-      // 加载音频到播放器（但不播放）
-      await _audioPlayer.setFilePath(audioFile.filePath);
+      // 加载音频到播放器（但不播放），使用 AudioSource 支持通知栏
+      await _audioPlayer.setAudioSource(
+        _createAudioSource(audioFile, _currentBook),
+      );
 
       // 恢复播放进度
       await _restoreProgress();
@@ -736,6 +743,29 @@ class AudioPlayerProvider extends ChangeNotifier {
       debugPrint('加载书籍播放进度失败: $e');
       return null;
     }
+  }
+
+  /// 创建带 MediaItem 的 AudioSource（用于通知栏和锁屏页显示）
+  AudioSource _createAudioSource(AudioFile audioFile, Book? book) {
+    return AudioSource.uri(
+      Uri.file(audioFile.filePath),
+      tag: MediaItem(
+        // 唯一标识符
+        id: audioFile.id.toString(),
+        // 音频标题（显示在通知栏）
+        title: audioFile.fileName,
+        // 专辑名称（显示书籍名称）
+        album: book?.title ?? '未知书籍',
+        // 封面图片
+        artUri: book?.coverPath != null && book!.coverPath!.isNotEmpty
+            ? Uri.file(book.coverPath!)
+            : null,
+        // 音频时长
+        duration: audioFile.duration > 0
+            ? Duration(milliseconds: audioFile.duration)
+            : null,
+      ),
+    );
   }
 
   @override

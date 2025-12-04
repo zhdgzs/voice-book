@@ -23,7 +23,8 @@
       "Bash(flutter devices:*)",
       "Bash(flutter run:*)",
       "Bash(git -C \"D:\\Android\\dev\\voice-book2\" log --oneline -20)",
-      "Bash(git -C \"D:\\Android\\dev\\voice-book2\" status)"
+      "Bash(git -C \"D:\\Android\\dev\\voice-book2\" status)",
+      "mcp__mcp-fetch__fetch"
     ],
     "deny": [],
     "ask": []
