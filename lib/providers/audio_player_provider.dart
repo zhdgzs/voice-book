@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:audio_session/audio_session.dart';
+import 'package:voice_book/providers/settings_provider.dart';
+import 'package:voice_book/providers/sleep_timer_provider.dart';
 import '../models/audio_file.dart';
 import '../models/book.dart';
 import '../models/playback_progress.dart';
@@ -23,10 +25,10 @@ class AudioPlayerProvider extends ChangeNotifier {
   final DatabaseService _databaseService = DatabaseService();
 
   /// 设置 Provider（用于获取自动播放设置）
-  dynamic _settingsProvider;
+  SettingsProvider? _settingsProvider;
 
   /// 睡眠定时器 Provider
-  dynamic _sleepTimerProvider;
+  SleepTimerProvider? _sleepTimerProvider;
 
   /// 当前播放的音频文件
   AudioFile? _currentAudioFile;
@@ -105,17 +107,18 @@ class AudioPlayerProvider extends ChangeNotifier {
   }
 
   /// 设置 SettingsProvider（用于获取自动播放设置）
-  void setSettingsProvider(dynamic settingsProvider) {
+  void setSettingsProvider(SettingsProvider settingsProvider) {
     _settingsProvider = settingsProvider;
+    _playbackSpeed = _settingsProvider!.defaultPlaybackSpeed;
   }
 
   /// 设置 SleepTimerProvider（用于睡眠定时器功能）
-  void setSleepTimerProvider(dynamic sleepTimerProvider) {
+  void setSleepTimerProvider(SleepTimerProvider sleepTimerProvider) {
     _sleepTimerProvider = sleepTimerProvider;
     // 设置定时器到期回调
     if (_sleepTimerProvider != null) {
       try {
-        _sleepTimerProvider.setOnTimerExpired(_onSleepTimerExpired);
+        _sleepTimerProvider!.setOnTimerExpired(_onSleepTimerExpired);
       } catch (e) {
         debugPrint('设置睡眠定时器回调失败: $e');
       }
@@ -275,7 +278,9 @@ class AudioPlayerProvider extends ChangeNotifier {
       await _loadBookInfo(_currentBookId!);
 
       // 加载书籍的所有音频文件作为播放列表（支持通知栏按钮）
+      // 必须等待完成，确保通知栏 MediaItem 立即更新
       await _loadBookPlaylist(audioFile, _currentBookId!);
+      notifyListeners(); // 立即通知监听器，更新通知栏
 
       // 恢复播放进度
       await _restoreProgress();
@@ -317,12 +322,13 @@ class AudioPlayerProvider extends ChangeNotifier {
 
   /// 播放
   Future<void> play() async {
-    // 检查播放器是否已加载音频
-    if (_playerState.processingState == ProcessingState.idle) {
-      debugPrint('播放器未加载音频，忽略播放请求');
-      return;
-    }
     try {
+      // 如果播放器处于 idle 状态，需要先加载音频源
+      if (_playerState.processingState == ProcessingState.idle && _currentAudioFile != null && _currentBookId != null) {
+        debugPrint('播放器处于 idle 状态，重新加载播放列表');
+        await _loadBookPlaylist(_currentAudioFile!, _currentBookId!);
+      }
+
       await _audioPlayer.play();
 
       // 在开始播放时更新书籍的当前音频文件ID
@@ -483,12 +489,12 @@ class AudioPlayerProvider extends ChangeNotifier {
     // 检查睡眠定时器（按集数模式）
     if (_sleepTimerProvider != null) {
       try {
-        final mode = _sleepTimerProvider.mode;
+        final mode = _sleepTimerProvider!.mode;
         if (mode != null && mode.toString().contains('episodes')) {
           debugPrint('📉 减少睡眠定时器剩余集数');
-          _sleepTimerProvider.decrementEpisode();
+          _sleepTimerProvider!.decrementEpisode();
           // 如果定时器已到期，不继续播放
-          if (!(_sleepTimerProvider.isActive as bool)) {
+          if (!(_sleepTimerProvider!.isActive)) {
             debugPrint('⏰ 睡眠定时器已到期，停止播放');
             return;
           }
@@ -496,26 +502,6 @@ class AudioPlayerProvider extends ChangeNotifier {
       } catch (e) {
         debugPrint('❌ 处理睡眠定时器失败: $e');
       }
-    }
-
-    // 检查是否启用自动播放下一个
-    if (_settingsProvider == null) {
-      debugPrint('❌ SettingsProvider 为 null');
-      return;
-    }
-
-    bool autoPlay = false;
-    try {
-      autoPlay = _settingsProvider.autoPlay as bool;
-      debugPrint('自动播放设置: $autoPlay');
-    } catch (e) {
-      debugPrint('❌ 获取自动播放设置失败: $e');
-      return;
-    }
-
-    if (!autoPlay) {
-      debugPrint('⏸️ 自动播放已禁用');
-      return;
     }
 
     // 获取下一个音频文件
@@ -752,7 +738,9 @@ class AudioPlayerProvider extends ChangeNotifier {
       );
 
       if (audioFileMaps.isEmpty) {
-        debugPrint('❌ 书籍中没有音频文件');
+        debugPrint('❌ 书籍中没有音频文件，加载单个音频, bookId: $bookId');
+        // 即使没有找到列表中的音频，也要加载当前音频
+        await _audioPlayer.setAudioSource(_createAudioSource(currentAudio, _currentBook));
         return;
       }
 
@@ -770,8 +758,9 @@ class AudioPlayerProvider extends ChangeNotifier {
       await _audioPlayer.setAudioSources(
         playlist,
         initialIndex: currentIndex >= 0 ? currentIndex : 0,
-        preload: false, // 懒加载：只加载当前音频，节省内存
+        preload: true, // 懒加载：只加载当前音频，节省内存
       );
+
     } catch (e) {
       debugPrint('❌ 加载播放列表失败: $e');
       // 如果加载播放列表失败，回退到单个音频

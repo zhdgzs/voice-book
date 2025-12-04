@@ -16,7 +16,7 @@ import 'models/audio_file.dart';
 void main() async {
   // 确保 Flutter 绑定初始化
   WidgetsFlutterBinding.ensureInitialized();
-
+  
   // 初始化后台播放服务（用于通知栏和锁屏页控制）
   await JustAudioBackground.init(
     androidNotificationChannelId: 'com.voicebook.audio',
@@ -25,11 +25,9 @@ void main() async {
     androidNotificationOngoing: true,
     androidNotificationIcon: 'mipmap/ic_launcher',
     androidShowNotificationBadge: true,
-    // 注意：通知栏按钮会根据播放列表自动显示（上一个、播放/暂停、下一个）
   );
 
   // 预初始化数据库，避免后续多个 Provider 同时访问导致冲突
-  // 如果底层设备不支持特定 PRAGMA，不影响应用继续运行
   try {
     await DatabaseService().database;
   } catch (e) {
