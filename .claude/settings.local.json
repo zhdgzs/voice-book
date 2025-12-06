@@ -1,29 +1,24 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:mp.weixin.qq.com)",
       "mcp__context7__resolve-library-id",
       "mcp__context7__get-library-docs",
-      "WebFetch(domain:pub.dev)",
       "Bash(flutter pub outdated:*)",
-      "WebFetch(domain:blog.csdn.net)",
-      "Bash(echo:*)",
       "mcp__fetch__fetch",
       "Bash(mkdir:*)",
       "Bash(git rev-parse:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(flutter pub get:*)",
       "Bash(find:*)",
       "mcp__sequential-thinking__sequentialthinking",
       "Bash(where:*)",
       "Bash(cat:*)",
       "Bash(flutter analyze:*)",
       "Bash(git diff:*)",
-      "Bash(flutter devices:*)",
       "Bash(flutter run:*)",
-      "Bash(git -C \"D:\\Android\\dev\\voice-book2\" log --oneline -20)",
-      "Bash(git -C \"D:\\Android\\dev\\voice-book2\" status)"
+      "mcp__mcp-fetch__fetch",
+      "Bash(git -C \"D:\\Android\\dev\\voice-book\" log --oneline -3)",
+      "Bash(git -C \"D:\\Android\\dev\\voice-book\" status)"
     ],
     "deny": [],
     "ask": []

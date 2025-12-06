@@ -65,7 +65,7 @@ class DatabaseService {
 
   Future<void> _executePragma(Database db, String statement) async {
     try {
-      await db.execute(statement);
+      await db.rawQuery(statement);
     } catch (e) {
       debugPrint('执行 $statement 失败，使用数据库默认设置: $e');
     }
