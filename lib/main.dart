@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:just_audio_background/just_audio_background.dart';
+import 'package:audio_service/audio_service.dart';
 import 'providers/book_provider.dart';
 import 'providers/audio_player_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/sleep_timer_provider.dart';
 import 'services/database_service.dart';
+import 'services/audio_handler.dart';
 import 'utils/constants.dart';
 import 'screens/book_list_screen.dart';
 import 'screens/file_import_screen.dart';
@@ -13,25 +14,29 @@ import 'screens/player_screen.dart';
 import 'models/book.dart';
 import 'models/audio_file.dart';
 
+late AudioPlayerHandler audioHandler;
+
 void main() async {
-  // 确保 Flutter 绑定初始化
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // 初始化后台播放服务（用于通知栏和锁屏页控制）
-  await JustAudioBackground.init(
-    androidNotificationChannelId: 'com.voicebook.audio',
-    androidNotificationChannelName: 'Voice Book 音频播放',
-    androidNotificationChannelDescription: '用于控制有声书播放',
-    androidNotificationOngoing: true,
-    androidNotificationIcon: 'mipmap/ic_launcher',
-    androidShowNotificationBadge: true,
+
+  // 初始化 audio_service
+  audioHandler = await AudioService.init(
+    builder: () => AudioPlayerHandler(),
+    config: const AudioServiceConfig(
+      androidNotificationChannelId: 'com.voicebook.audio',
+      androidNotificationChannelName: 'Voice Book 音频播放',
+      androidNotificationChannelDescription: '用于控制有声书播放',
+      androidNotificationOngoing: true,
+      androidNotificationIcon: 'mipmap/ic_launcher',
+      androidShowNotificationBadge: true,
+    ),
   );
 
-  // 预初始化数据库，避免后续多个 Provider 同时访问导致冲突
+  // 预初始化数据库
   try {
     await DatabaseService().database;
   } catch (e) {
-    debugPrint('数据库预初始化失败，后续使用时将再次尝试: $e');
+    debugPrint('数据库预初始化失败: $e');
   }
 
   // 初始化设置 Provider
