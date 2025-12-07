@@ -56,6 +56,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
             // 使用当前播放的音频文件，如果没有则使用传入的
             final currentAudio = audioPlayer.currentAudioFile ?? widget.audioFile;
 
+            // 显示错误提示
+            if (audioPlayer.errorMessage != null) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                _showErrorSnackBar(context, audioPlayer);
+              });
+            }
+
             return Column(
               children: [
                 // 顶部导航栏
@@ -878,6 +885,49 @@ class _PlayerScreenState extends State<PlayerScreen> {
         onBookmarkTap: (position) {
           audioPlayer.seek(position);
         },
+      ),
+    );
+  }
+
+  /// 显示错误提示（带下载链接）
+  void _showErrorSnackBar(BuildContext context, AudioPlayerProvider audioPlayer) {
+    if (!mounted) return;
+    final message = audioPlayer.errorMessage;
+    if (message == null) return;
+
+    audioPlayer.clearError();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 8),
+        showCloseIcon: true,
+        action: message.contains('完整版')
+            ? SnackBarAction(
+                label: '下载完整版',
+                onPressed: () => _openFullVersionUrl(),
+              )
+            : null,
+      ),
+    );
+  }
+
+  /// 显示完整版下载链接对话框
+  void _openFullVersionUrl() {
+    const url = 'https://github.com/zhdgzs/voice-book/releases';
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('下载完整版'),
+        content: const SelectableText(
+          '请访问以下链接下载完整版：\n\n$url',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
+        ],
       ),
     );
   }
