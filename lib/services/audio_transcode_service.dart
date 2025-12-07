@@ -3,9 +3,9 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:ffmpeg_kit_flutter_new_audio/ffmpeg_kit.dart';
 import 'package:path/path.dart' as path;
 import 'flavor_config.dart';
+import 'ffmpeg_kit_wrapper.dart';
 
 /// 转码不支持异常
 class TranscodeNotSupportedException implements Exception {

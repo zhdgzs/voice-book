@@ -47,6 +47,17 @@ android {
         }
     }
 
+    flavorDimensions += "version"
+    productFlavors {
+        create("full") {
+            dimension = "version"
+        }
+        create("lite") {
+            dimension = "version"
+            applicationIdSuffix = ".lite"
+        }
+    }
+
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("release")

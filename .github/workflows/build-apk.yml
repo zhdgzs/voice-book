@@ -67,25 +67,32 @@ jobs:
 
     - name: 构建 Full 版本 APK
       if: github.event_name != 'pull_request'
-      run: flutter build apk --release --split-per-abi || true
+      run: flutter build apk --release --flavor full --split-per-abi
 
     - name: 重命名 Full 版本 APK
       if: github.event_name != 'pull_request'
       run: |
         cd build/app/outputs/flutter-apk
-        [ -f app-armeabi-v7a-release.apk ] && mv app-armeabi-v7a-release.apk voice-book-arm32-full.apk || true
-        [ -f app-arm64-v8a-release.apk ] && mv app-arm64-v8a-release.apk voice-book-arm64-full.apk || true
+        [ -f app-full-armeabi-v7a-release.apk ] && mv app-full-armeabi-v7a-release.apk voice-book-arm32-full.apk || true
+        [ -f app-full-arm64-v8a-release.apk ] && mv app-full-arm64-v8a-release.apk voice-book-arm64-full.apk || true
+
+    - name: 移除 FFmpeg 依赖（Lite 版本）
+      if: github.event_name != 'pull_request'
+      run: |
+        sed -i '/ffmpeg_kit_flutter_new_audio/d' pubspec.yaml
+        cp lib/services/ffmpeg_stub.dart lib/services/ffmpeg_kit_wrapper.dart
+        flutter pub get
 
     - name: 构建 Lite 版本 APK
       if: github.event_name != 'pull_request'
-      run: flutter build apk --release --split-per-abi --dart-define=HAS_FFMPEG=false || true
+      run: flutter build apk --release --flavor lite --split-per-abi --dart-define=HAS_FFMPEG=false
 
     - name: 重命名 Lite 版本 APK
       if: github.event_name != 'pull_request'
       run: |
         cd build/app/outputs/flutter-apk
-        [ -f app-armeabi-v7a-release.apk ] && mv app-armeabi-v7a-release.apk voice-book-arm32-lite.apk || true
-        [ -f app-arm64-v8a-release.apk ] && mv app-arm64-v8a-release.apk voice-book-arm64-lite.apk || true
+        [ -f app-lite-armeabi-v7a-release.apk ] && mv app-lite-armeabi-v7a-release.apk voice-book-arm32-lite.apk || true
+        [ -f app-lite-arm64-v8a-release.apk ] && mv app-lite-arm64-v8a-release.apk voice-book-arm64-lite.apk || true
 
     - name: 上传 APK 构建产物
       if: github.event_name != 'pull_request'

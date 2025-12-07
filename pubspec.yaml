@@ -22,7 +22,6 @@ dependencies:
   path: ^1.8.3
   audio_metadata_reader: ^1.4.2
   file_picker: ^10.3.7
-  ffmpeg_kit_flutter_new_audio: ^2.0.0
   package_info_plus: ^9.0.0
   crypto: ^3.0.7
 
