@@ -26,7 +26,7 @@ packages:
     source: hosted
     version: "1.4.2"
   audio_service:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: audio_service
       sha256: cb122c7c2639d2a992421ef96b67948ad88c5221da3365ccef1031393a76e044
@@ -161,6 +161,22 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "2.1.4"
+  ffmpeg_kit_flutter_new_audio:
+    dependency: "direct main"
+    description:
+      name: ffmpeg_kit_flutter_new_audio
+      sha256: "0a698b46cd163c8e9917af75325c84d27871a2a8b2c37de3b40486cd0ab662ae"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "2.0.0"
+  ffmpeg_kit_flutter_platform_interface:
+    dependency: transitive
+    description:
+      name: ffmpeg_kit_flutter_platform_interface
+      sha256: addf046ae44e190ad0101b2fde2ad909a3cd08a2a109f6106d2f7048b7abedee
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "0.2.1"
   file:
     dependency: transitive
     description:
@@ -264,14 +280,6 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "0.10.5"
-  just_audio_background:
-    dependency: "direct main"
-    description:
-      name: just_audio_background
-      sha256: "3900825701164577db65337792bc122b66f9eb1245ee47e7ae8244ae5ceb8030"
-      url: "https://pub.flutter-io.cn"
-    source: hosted
-    version: "0.0.1-beta.17"
   just_audio_platform_interface:
     dependency: transitive
     description:

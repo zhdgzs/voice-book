@@ -47,7 +47,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onConfigure: _onConfigure,
@@ -65,7 +65,7 @@ class DatabaseService {
 
   Future<void> _executePragma(Database db, String statement) async {
     try {
-      await db.execute(statement);
+      await db.rawQuery(statement);
     } catch (e) {
       debugPrint('执行 $statement 失败，使用数据库默认设置: $e');
     }
@@ -87,7 +87,8 @@ class DatabaseService {
         skip_start_seconds INTEGER DEFAULT 0,
         skip_end_seconds INTEGER DEFAULT 0,
         created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
+        updated_at INTEGER NOT NULL,
+        source_folder_path TEXT
       )
     ''');
 
@@ -148,6 +149,10 @@ class DatabaseService {
     if (oldVersion < 2) {
       await db.execute('ALTER TABLE books ADD COLUMN skip_start_seconds INTEGER DEFAULT 0');
       await db.execute('ALTER TABLE books ADD COLUMN skip_end_seconds INTEGER DEFAULT 0');
+    }
+    // 从版本 2 升级到版本 3：添加源文件夹路径字段
+    if (oldVersion < 3) {
+      await db.execute('ALTER TABLE books ADD COLUMN source_folder_path TEXT');
     }
   }
 

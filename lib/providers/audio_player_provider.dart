@@ -2,30 +2,31 @@ import 'dart:io' as io;
 
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
+import 'package:voice_book/providers/settings_provider.dart';
+import 'package:voice_book/providers/sleep_timer_provider.dart';
 import '../models/audio_file.dart';
 import '../models/book.dart';
 import '../models/playback_progress.dart';
 import '../services/database_service.dart';
+import '../services/audio_handler.dart';
+import '../main.dart' show audioHandler;
+import '../services/audio_transcode_service.dart';
 import 'package:sqflite/sqflite.dart';
 
 /// 音频播放器 Provider
 ///
-/// 负责管理音频播放的所有状态和操作，包括：
-/// - 播放/暂停/停止控制
-/// - 播放进度管理
-/// - 倍速播放
-/// - 播放进度的保存和恢复
-/// - 跳过开头/结尾
-class AudioPlayerProvider extends ChangeNotifier {
-  final AudioPlayer _audioPlayer = AudioPlayer();
+/// 负责管理音频播放的所有状态和操作
+class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback {
+  AudioPlayer get _audioPlayer => audioHandler.player;
   final DatabaseService _databaseService = DatabaseService();
 
   /// 设置 Provider（用于获取自动播放设置）
-  dynamic _settingsProvider;
+  SettingsProvider? _settingsProvider;
 
   /// 睡眠定时器 Provider
-  dynamic _sleepTimerProvider;
+  SleepTimerProvider? _sleepTimerProvider;
 
   /// 当前播放的音频文件
   AudioFile? _currentAudioFile;
@@ -80,9 +81,25 @@ class AudioPlayerProvider extends ChangeNotifier {
   bool _isInitialized = false;
 
   AudioPlayerProvider() {
+    debugPrint('🔧 AudioPlayerProvider 构造函数，设置回调');
+    audioHandler.setCallback(this);
     _initializeAudioSession();
     _initializePlayer();
     // 不在构造函数中访问数据库，避免与其他 Provider 的数据库访问冲突
+    // 转码支持延迟初始化，避免阻塞应用启动
+    _initializeTranscodeSupportAsync();
+  }
+
+  /// 初始化音频转码支持（异步，不阻塞构造函数）
+  void _initializeTranscodeSupportAsync() {
+    Future.microtask(() async {
+      try {
+        await AudioTranscodeService().initialize();
+        debugPrint('✅ 音频转码支持已初始化');
+      } catch (e) {
+        debugPrint('⚠️ 转码支持初始化失败（不影响原生格式播放）: $e');
+      }
+    });
   }
 
   /// 确保已初始化（懒加载）
@@ -104,17 +121,18 @@ class AudioPlayerProvider extends ChangeNotifier {
   }
 
   /// 设置 SettingsProvider（用于获取自动播放设置）
-  void setSettingsProvider(dynamic settingsProvider) {
+  void setSettingsProvider(SettingsProvider settingsProvider) {
     _settingsProvider = settingsProvider;
+    _playbackSpeed = _settingsProvider!.defaultPlaybackSpeed;
   }
 
   /// 设置 SleepTimerProvider（用于睡眠定时器功能）
-  void setSleepTimerProvider(dynamic sleepTimerProvider) {
+  void setSleepTimerProvider(SleepTimerProvider sleepTimerProvider) {
     _sleepTimerProvider = sleepTimerProvider;
     // 设置定时器到期回调
     if (_sleepTimerProvider != null) {
       try {
-        _sleepTimerProvider.setOnTimerExpired(_onSleepTimerExpired);
+        _sleepTimerProvider!.setOnTimerExpired(_onSleepTimerExpired);
       } catch (e) {
         debugPrint('设置睡眠定时器回调失败: $e');
       }
@@ -155,10 +173,11 @@ class AudioPlayerProvider extends ChangeNotifier {
           // 加载书籍信息（用于获取跳过设置）
           if (_currentBookId != null) {
             await _loadBookInfo(_currentBookId!);
+
+            // 加载书籍的所有音频文件作为播放列表
+            await _loadBookPlaylist(audioFile, _currentBookId!);
           }
 
-          // 加载音频到播放器（但不播放）
-          await _audioPlayer.setFilePath(audioFile.filePath);
           await _restoreProgress();
 
           notifyListeners();
@@ -272,8 +291,9 @@ class AudioPlayerProvider extends ChangeNotifier {
       // 加载书籍信息（用于获取跳过设置）
       await _loadBookInfo(_currentBookId!);
 
-      // 加载音频文件
-      await _audioPlayer.setFilePath(audioFile.filePath);
+      // 加载书籍播放列表（包含正确的索引，通知栏会显示正确标题，自动处理转码）
+      await _loadBookPlaylist(audioFile, _currentBookId!);
+      notifyListeners();
 
       // 恢复播放进度
       await _restoreProgress();
@@ -315,18 +335,18 @@ class AudioPlayerProvider extends ChangeNotifier {
 
   /// 播放
   Future<void> play() async {
-    // 检查播放器是否已加载音频
-    if (_playerState.processingState == ProcessingState.idle) {
-      debugPrint('播放器未加载音频，忽略播放请求');
-      return;
-    }
     try {
-      await _audioPlayer.play();
+      // 如果播放器处于 idle 状态，需要先加载音频源
+      if (_playerState.processingState == ProcessingState.idle && _currentAudioFile != null && _currentBookId != null) {
+        debugPrint('播放器处于 idle 状态，重新加载播放列表');
+        await _loadBookPlaylist(_currentAudioFile!, _currentBookId!);
+      }
 
-      // 在开始播放时更新书籍的当前音频文件ID
+      _audioPlayer.play();
+
+      // 更新书籍的当前音频文件ID
       if (_currentBookId != null && _currentAudioFile?.id != null) {
-        await _updateBookCurrentAudio(_currentBookId!, _currentAudioFile!.id!);
-        debugPrint('✅ 播放时更新书籍当前音频ID: bookId=$_currentBookId, audioFileId=${_currentAudioFile!.id}');
+        _updateBookCurrentAudio(_currentBookId!, _currentAudioFile!.id!);
       }
     } on PlayerInterruptedException {
       // 忽略中断异常
@@ -339,13 +359,14 @@ class AudioPlayerProvider extends ChangeNotifier {
 
   /// 暂停
   Future<void> pause() async {
-    // 检查播放器是否已加载音频
+    // 检查播放器是否已暂停
     if (_playerState.processingState == ProcessingState.idle) {
       return;
     }
     try {
       await _audioPlayer.pause();
       await _saveProgress();
+
     } on PlayerInterruptedException {
       // 忽略中断异常
     } catch (e) {
@@ -481,12 +502,12 @@ class AudioPlayerProvider extends ChangeNotifier {
     // 检查睡眠定时器（按集数模式）
     if (_sleepTimerProvider != null) {
       try {
-        final mode = _sleepTimerProvider.mode;
+        final mode = _sleepTimerProvider!.mode;
         if (mode != null && mode.toString().contains('episodes')) {
           debugPrint('📉 减少睡眠定时器剩余集数');
-          _sleepTimerProvider.decrementEpisode();
+          _sleepTimerProvider!.decrementEpisode();
           // 如果定时器已到期，不继续播放
-          if (!(_sleepTimerProvider.isActive as bool)) {
+          if (!(_sleepTimerProvider!.isActive)) {
             debugPrint('⏰ 睡眠定时器已到期，停止播放');
             return;
           }
@@ -494,26 +515,6 @@ class AudioPlayerProvider extends ChangeNotifier {
       } catch (e) {
         debugPrint('❌ 处理睡眠定时器失败: $e');
       }
-    }
-
-    // 检查是否启用自动播放下一个
-    if (_settingsProvider == null) {
-      debugPrint('❌ SettingsProvider 为 null');
-      return;
-    }
-
-    bool autoPlay = false;
-    try {
-      autoPlay = _settingsProvider.autoPlay as bool;
-      debugPrint('自动播放设置: $autoPlay');
-    } catch (e) {
-      debugPrint('❌ 获取自动播放设置失败: $e');
-      return;
-    }
-
-    if (!autoPlay) {
-      debugPrint('⏸️ 自动播放已禁用');
-      return;
     }
 
     // 获取下一个音频文件
@@ -723,8 +724,8 @@ class AudioPlayerProvider extends ChangeNotifier {
       // 加载书籍信息（用于获取跳过设置）
       await _loadBookInfo(bookId);
 
-      // 加载音频到播放器（但不播放）
-      await _audioPlayer.setFilePath(audioFile.filePath);
+      // 加载书籍的所有音频文件作为播放列表（支持通知栏按钮）
+      await _loadBookPlaylist(audioFile, bookId);
 
       // 恢复播放进度
       await _restoreProgress();
@@ -736,6 +737,125 @@ class AudioPlayerProvider extends ChangeNotifier {
       debugPrint('加载书籍播放进度失败: $e');
       return null;
     }
+  }
+
+  /// 加载书籍的所有音频作为播放列表（支持通知栏的上一个/下一个按钮）
+  /// 自动处理需要转码的音频格式
+  Future<void> _loadBookPlaylist(AudioFile currentAudio, int bookId) async {
+    try {
+      final db = await _databaseService.database;
+      final audioFileMaps = await db.query(
+        'audio_files',
+        where: 'book_id = ?',
+        whereArgs: [bookId],
+        orderBy: 'sort_order ASC, file_name ASC',
+      );
+
+      // 处理当前音频的转码
+      final transcodeService = AudioTranscodeService();
+      String? transcodedPath;
+      if (transcodeService.needsTranscode(currentAudio.filePath)) {
+        debugPrint('🔄 检测到需要转码的格式，开始转码...');
+        if (!transcodeService.isInitialized) {
+          await transcodeService.initialize();
+        }
+        transcodedPath = await transcodeService.transcodeToWav(currentAudio.filePath);
+        debugPrint('✅ 转码完成: $transcodedPath');
+      }
+
+      if (audioFileMaps.isEmpty) {
+        debugPrint('❌ 书籍中没有音频文件，加载单个音频, bookId: $bookId');
+        await audioHandler.setAudioSource(_createAudioSource(currentAudio, overridePath: transcodedPath));
+        audioHandler.updateQueueWithIndex([_createMediaItem(currentAudio, _currentBook)], 0);
+        return;
+      }
+
+      final audioFiles = audioFileMaps.map((map) => AudioFile.fromMap(map)).toList();
+      final currentIndex = audioFiles.indexWhere((audio) => audio.id == currentAudio.id);
+      final mediaItems = audioFiles.map((audio) => _createMediaItem(audio, _currentBook)).toList();
+
+      // 检查是否有需要转码的文件
+      final hasTranscodableFiles = audioFiles.any((a) => transcodeService.needsTranscode(a.filePath));
+
+      if (hasTranscodableFiles) {
+        // 有需要转码的文件时，使用单文件模式（避免播放列表中未转码文件报错）
+        debugPrint('📚 检测到需要转码的文件，使用单文件播放模式，当前索引: $currentIndex');
+        // 先设置音频源（会触发 currentIndexStream 发出 0）
+        await audioHandler.setAudioSource(_createAudioSource(currentAudio, overridePath: transcodedPath));
+        // 再更新队列，确保 mediaItem 显示正确的标题
+        debugPrint('📚 加载单个音频: ${currentAudio.fileName},$transcodedPath');
+        audioHandler.updateQueueWithIndex(mediaItems, currentIndex >= 0 ? currentIndex : 0);
+        
+        debugPrint('📚 加载单个音频222: ${currentAudio.fileName},$transcodedPath');
+      } else {
+        // 全部是原生支持格式，使用播放列表模式
+        final playlist = audioFiles.map((audio) => _createAudioSource(audio)).toList();
+        debugPrint('📚 加载播放列表: ${audioFiles.length} 个音频，当前索引: $currentIndex');
+        audioHandler.updateQueueWithIndex(mediaItems, currentIndex >= 0 ? currentIndex : 0);
+        await audioHandler.setAudioSources(playlist, initialIndex: currentIndex >= 0 ? currentIndex : 0);
+      }
+    } catch (e) {
+      debugPrint('❌ 加载播放列表失败: $e');
+      rethrow;
+    }
+  }
+
+  /// 创建 AudioSource
+  AudioSource _createAudioSource(AudioFile audioFile, {String? overridePath}) {
+    return AudioSource.uri(Uri.file(overridePath ?? audioFile.filePath));
+  }
+
+  /// 创建 MediaItem（用于通知栏和锁屏页显示）
+  MediaItem _createMediaItem(AudioFile audioFile, Book? book) {
+    return MediaItem(
+      id: audioFile.id.toString(),
+      title: audioFile.fileName,
+      album: book?.title ?? '未知书籍',
+      artUri: book?.coverPath != null && book!.coverPath!.isNotEmpty
+          ? Uri.file(book.coverPath!)
+          : null,
+      duration: audioFile.duration > 0
+          ? Duration(milliseconds: audioFile.duration)
+          : null,
+    );
+  }
+
+  // AudioControlCallback 接口实现（通知栏控制回调）
+  // 注意：不使用 await，避免与 audio_service 回调形成死锁
+  @override
+  Future<void> onPlay() async {
+    debugPrint('🎵 onPlay 回调被调用');
+    play();
+  }
+
+  @override
+  Future<void> onPause() async {
+    debugPrint('⏸️ onPause 回调被调用');
+    pause();
+  }
+
+  @override
+  Future<void> onStop() async {
+    debugPrint('⏹️ onStop 回调被调用');
+    stop();
+  }
+
+  @override
+  Future<void> onSeek(int milliseconds) async {
+    debugPrint('⏩ onSeek 回调被调用: $milliseconds ms');
+    seek(milliseconds);
+  }
+
+  @override
+  Future<void> onSkipToNext() async {
+    debugPrint('⏭️ onSkipToNext 回调被调用');
+    playNext();
+  }
+
+  @override
+  Future<void> onSkipToPrevious() async {
+    debugPrint('⏮️ onSkipToPrevious 回调被调用');
+    playPrevious();
   }
 
   @override

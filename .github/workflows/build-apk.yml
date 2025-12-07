@@ -90,18 +90,15 @@ jobs:
 
     - name: 创建 GitHub Release
       if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         files: build/app/outputs/flutter-apk/voice-book-*-release.apk
+        generate_release_notes: true
         body: |
-          ## Voice Book ${{ github.ref_name }}
-
           ### 下载说明
           - `voice-book-arm64-release.apk` - 适用于 64 位设备（推荐）
           - `voice-book-arm32-release.apk` - 适用于 32 位旧设备
-
-          ### 更新内容
-          请查看提交记录了解详细更新内容。
+        append_body: true
         draft: false
         prerelease: false
         fail_on_unmatched_files: false

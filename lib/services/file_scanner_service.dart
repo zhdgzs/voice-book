@@ -22,17 +22,13 @@ class FileScannerService {
   // 元数据服务实例
   final AudioMetadataService _metadataService = AudioMetadataService();
 
-  /// 支持的音频文件扩展名
+  /// 支持的音频文件扩展名（原生支持 + 可转码格式）
   static const List<String> supportedExtensions = [
-    '.mp3',
-    '.m4a',
-    '.m4b',
-    '.wav',
-    '.flac',
-    '.aac',
-    '.ogg',
-    '.opus',
-    '.wma',
+    // just_audio 原生支持
+    '.mp3', '.m4a', '.m4b', '.wav', '.flac', '.aac', '.ogg', '.opus',
+    // 需要转码的格式
+    '.wma', '.ape', '.amr', '.ac3', '.dts', '.ra', '.rm',
+    '.wv', '.tta', '.mka', '.spx', '.caf', '.au', '.snd',
   ];
 
   /// 扫描指定目录下的音频文件
@@ -240,11 +236,34 @@ class FileScannerService {
     final sortedFiles = List<File>.from(files);
 
     sortedFiles.sort((a, b) {
-      final comparison = path.basename(a.path).compareTo(path.basename(b.path));
+      final comparison = _naturalCompareInstance(path.basename(a.path), path.basename(b.path));
       return ascending ? comparison : -comparison;
     });
 
     return sortedFiles;
+  }
+
+  /// 实例方法版本的自然排序
+  int _naturalCompareInstance(String a, String b) {
+    final regExp = RegExp(r'(\d+)|(\D+)');
+    final partsA = regExp.allMatches(a).map((m) => m.group(0)!).toList();
+    final partsB = regExp.allMatches(b).map((m) => m.group(0)!).toList();
+
+    for (int i = 0; i < partsA.length && i < partsB.length; i++) {
+      final partA = partsA[i];
+      final partB = partsB[i];
+      final numA = int.tryParse(partA);
+      final numB = int.tryParse(partB);
+
+      int cmp;
+      if (numA != null && numB != null) {
+        cmp = numA.compareTo(numB);
+      } else {
+        cmp = partA.toLowerCase().compareTo(partB.toLowerCase());
+      }
+      if (cmp != 0) return cmp;
+    }
+    return partsA.length.compareTo(partsB.length);
   }
 
   /// 按文件大小排序音频文件
@@ -339,8 +358,32 @@ List<String> _scanDirectoryIsolate(_ScanParams params) {
     }
   }
 
-  // 在 isolate 中排序
-  audioPaths.sort();
+  // 自然排序：数字按数值大小排序
+  audioPaths.sort(_naturalCompare);
 
   return audioPaths;
+}
+
+/// 自然排序比较函数
+/// 将字符串拆分为文本和数字部分，数字按数值比较
+int _naturalCompare(String a, String b) {
+  final regExp = RegExp(r'(\d+)|(\D+)');
+  final partsA = regExp.allMatches(a).map((m) => m.group(0)!).toList();
+  final partsB = regExp.allMatches(b).map((m) => m.group(0)!).toList();
+
+  for (int i = 0; i < partsA.length && i < partsB.length; i++) {
+    final partA = partsA[i];
+    final partB = partsB[i];
+    final numA = int.tryParse(partA);
+    final numB = int.tryParse(partB);
+
+    int cmp;
+    if (numA != null && numB != null) {
+      cmp = numA.compareTo(numB);
+    } else {
+      cmp = partA.toLowerCase().compareTo(partB.toLowerCase());
+    }
+    if (cmp != 0) return cmp;
+  }
+  return partsA.length.compareTo(partsB.length);
 }
