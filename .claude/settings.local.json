@@ -25,7 +25,8 @@
       "Bash(git -C \"D:/Android/dev/voice-book\" show b1197a4 --stat)",
       "Bash(git -C \"D:/Android/dev/voice-book\" show 9a3ced3 --stat)",
       "WebSearch",
-      "Bash(flutter pub add:*)"
+      "Bash(flutter pub add:*)",
+      "Bash(flutter pub get:*)"
     ],
     "deny": [],
     "ask": []
