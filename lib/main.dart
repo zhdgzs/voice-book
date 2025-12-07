@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:audio_service/audio_service.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'providers/book_provider.dart';
 import 'providers/audio_player_provider.dart';
 import 'providers/settings_provider.dart';
@@ -363,6 +364,11 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
 /// 设置页面
 ///
 /// 显示应用设置选项
+Future<String> _getAppVersion() async {
+  final info = await PackageInfo.fromPlatform();
+  return '${info.version}+${info.buildNumber}';
+}
+
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
@@ -498,9 +504,14 @@ class SettingsScreen extends StatelessWidget {
                   title: Text('应用名称'),
                   subtitle: Text(AppConstants.appName),
                 ),
-                const ListTile(
-                  title: Text('版本'),
-                  subtitle: Text('1.0.0'),
+                FutureBuilder<String>(
+                  future: _getAppVersion(),
+                  builder: (context, snapshot) {
+                    return ListTile(
+                      title: const Text('版本'),
+                      subtitle: Text(snapshot.data ?? '0.0.1'),
+                    );
+                  },
                 ),
                 const ListTile(
                   title: Text('描述'),

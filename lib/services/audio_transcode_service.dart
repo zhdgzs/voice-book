@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:io';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:ffmpeg_kit_flutter_new_audio/ffmpeg_kit.dart';
@@ -77,9 +79,10 @@ class AudioTranscodeService {
         throw Exception('源文件不存在: $sourceFilePath');
       }
 
-      // 生成输出文件名（保留原文件名，仅替换扩展名）
+      // 使用原始路径的哈希值生成唯一输出文件名，避免不同目录同名文件冲突
+      final pathHash = md5.convert(utf8.encode(sourceFilePath)).toString().substring(0, 8);
       final baseName = path.basenameWithoutExtension(sourceFilePath);
-      final outputPath = '${_cacheDir.path}/$baseName.wav';
+      final outputPath = '${_cacheDir.path}/${baseName}_$pathHash.wav';
 
       // 如果转码文件已存在，直接返回
       if (await File(outputPath).exists()) {
