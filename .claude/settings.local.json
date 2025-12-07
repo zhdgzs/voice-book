@@ -18,7 +18,14 @@
       "Bash(flutter run:*)",
       "mcp__mcp-fetch__fetch",
       "Bash(git -C \"D:\\Android\\dev\\voice-book\" log --oneline -3)",
-      "Bash(git -C \"D:\\Android\\dev\\voice-book\" status)"
+      "Bash(git -C \"D:\\Android\\dev\\voice-book\" status)",
+      "Bash(git -C \"D:/Android/dev/voice-book\" log --oneline -10)",
+      "Bash(git -C \"D:/Android/dev/voice-book\" diff main...bate --stat)",
+      "Bash(git -C \"D:/Android/dev/voice-book\" log --oneline test..bate)",
+      "Bash(git -C \"D:/Android/dev/voice-book\" show b1197a4 --stat)",
+      "Bash(git -C \"D:/Android/dev/voice-book\" show 9a3ced3 --stat)",
+      "WebSearch",
+      "Bash(flutter pub add:*)"
     ],
     "deny": [],
     "ask": []

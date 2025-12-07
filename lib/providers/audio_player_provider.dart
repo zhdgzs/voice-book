@@ -266,13 +266,17 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
 
   /// 加载并播放音频文件
   Future<void> loadAndPlay(AudioFile audioFile, {int? bookId}) async {
-    try {
-      // 如果是同一个文件，直接播放
-      if (_currentAudioFile?.id == audioFile.id) {
-        await play();
-        return;
-      }
+    // 如果是同一个文件，直接播放
+    if (_currentAudioFile?.id == audioFile.id) {
+      await play();
+      return;
+    }
 
+    // 保存原状态，用于失败时恢复
+    final previousAudioFile = _currentAudioFile;
+    final previousBookId = _currentBookId;
+
+    try {
       // 重置播放完成标志
       _hasTriggeredCompletion = false;
 
@@ -309,6 +313,12 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
     } on PlayerInterruptedException {
       // 加载被中断（用户快速切换），忽略此错误
       debugPrint('音频加载被中断，用户切换了音频');
+    } on TranscodeNotSupportedException catch (e) {
+      // 恢复原状态
+      _currentAudioFile = previousAudioFile;
+      _currentBookId = previousBookId;
+      _errorMessage = e.message;
+      debugPrint('❌ $_errorMessage');
     } catch (e) {
       _errorMessage = '加载音频文件失败: $e';
       debugPrint(_errorMessage);
@@ -755,6 +765,10 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
       final transcodeService = AudioTranscodeService();
       String? transcodedPath;
       if (transcodeService.needsTranscode(currentAudio.filePath)) {
+        // lite 版本不支持转码，抛出异常
+        if (!AudioTranscodeService.isSupported) {
+          throw TranscodeNotSupportedException();
+        }
         debugPrint('🔄 检测到需要转码的格式，开始转码...');
         if (!transcodeService.isInitialized) {
           await transcodeService.initialize();
