@@ -1,11 +1,15 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:just_audio_background/just_audio_background.dart';
+import 'package:audio_service/audio_service.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'providers/book_provider.dart';
+import 'services/permission_service.dart';
 import 'providers/audio_player_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/sleep_timer_provider.dart';
 import 'services/database_service.dart';
+import 'services/audio_handler.dart';
 import 'utils/constants.dart';
 import 'screens/book_list_screen.dart';
 import 'screens/file_import_screen.dart';
@@ -13,27 +17,29 @@ import 'screens/player_screen.dart';
 import 'models/book.dart';
 import 'models/audio_file.dart';
 
+late AudioPlayerHandler audioHandler;
+
 void main() async {
-  // 确保 Flutter 绑定初始化
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 初始化后台播放服务（用于通知栏和锁屏页控制）
-  await JustAudioBackground.init(
-    androidNotificationChannelId: 'com.voicebook.audio',
-    androidNotificationChannelName: 'Voice Book 音频播放',
-    androidNotificationChannelDescription: '用于控制有声书播放',
-    androidNotificationOngoing: true,
-    androidNotificationIcon: 'mipmap/ic_launcher',
-    androidShowNotificationBadge: true,
-    // 注意：通知栏按钮会根据播放列表自动显示（上一个、播放/暂停、下一个）
+  // 初始化 audio_service
+  audioHandler = await AudioService.init(
+    builder: () => AudioPlayerHandler(),
+    config: const AudioServiceConfig(
+      androidNotificationChannelId: 'com.voicebook.audio',
+      androidNotificationChannelName: 'Voice Book 音频播放',
+      androidNotificationChannelDescription: '用于控制有声书播放',
+      androidNotificationOngoing: true,
+      androidNotificationIcon: 'mipmap/ic_launcher',
+      androidShowNotificationBadge: true,
+    ),
   );
 
-  // 预初始化数据库，避免后续多个 Provider 同时访问导致冲突
-  // 如果底层设备不支持特定 PRAGMA，不影响应用继续运行
+  // 预初始化数据库
   try {
     await DatabaseService().database;
   } catch (e) {
-    debugPrint('数据库预初始化失败，后续使用时将再次尝试: $e');
+    debugPrint('数据库预初始化失败: $e');
   }
 
   // 初始化设置 Provider
@@ -360,8 +366,53 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
 /// 设置页面
 ///
 /// 显示应用设置选项
-class SettingsScreen extends StatelessWidget {
+Future<String> _getAppVersion() async {
+  final info = await PackageInfo.fromPlatform();
+  return '${info.version}+${info.buildNumber}';
+}
+
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  final _permissionService = PermissionService();
+  bool? _hasNotificationPermission;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkPermissions();
+  }
+
+  Future<void> _checkPermissions() async {
+    if (!Platform.isAndroid) return;
+    final hasNotification = await _permissionService.checkNotificationPermission();
+    if (mounted) {
+      setState(() => _hasNotificationPermission = hasNotification);
+    }
+  }
+
+  Future<void> _requestNotificationPermission() async {
+    final granted = await _permissionService.requestNotificationPermission();
+    if (mounted) {
+      setState(() => _hasNotificationPermission = granted);
+      if (!granted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('需要通知权限才能在锁屏显示播放控制'),
+            action: SnackBarAction(
+              label: '打开设置',
+              onPressed: _permissionService.openSettings,
+            ),
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -371,6 +422,50 @@ class SettingsScreen extends StatelessWidget {
       ),
       body: ListView(
         children: [
+          // 权限设置（仅 Android）
+          if (Platform.isAndroid)
+            Card(
+              margin: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      '权限',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                  ),
+                  ListTile(
+                    leading: Icon(
+                      _hasNotificationPermission == true
+                          ? Icons.notifications_active
+                          : Icons.notifications_off,
+                      color: _hasNotificationPermission == true
+                          ? Colors.green
+                          : Colors.orange,
+                    ),
+                    title: const Text('通知权限'),
+                    subtitle: Text(
+                      _hasNotificationPermission == null
+                          ? '检测中...'
+                          : _hasNotificationPermission!
+                              ? '已授权 - 锁屏播放控制可用'
+                              : '未授权 - 无法显示锁屏播放控制',
+                    ),
+                    trailing: _hasNotificationPermission == false
+                        ? TextButton(
+                            onPressed: _requestNotificationPermission,
+                            child: const Text('授权'),
+                          )
+                        : null,
+                  ),
+                ],
+              ),
+            ),
+
           // 主题设置
           Card(
             margin: const EdgeInsets.all(16),
@@ -495,9 +590,14 @@ class SettingsScreen extends StatelessWidget {
                   title: Text('应用名称'),
                   subtitle: Text(AppConstants.appName),
                 ),
-                const ListTile(
-                  title: Text('版本'),
-                  subtitle: Text('1.0.0'),
+                FutureBuilder<String>(
+                  future: _getAppVersion(),
+                  builder: (context, snapshot) {
+                    return ListTile(
+                      title: const Text('版本'),
+                      subtitle: Text(snapshot.data ?? '0.0.1'),
+                    );
+                  },
                 ),
                 const ListTile(
                   title: Text('描述'),

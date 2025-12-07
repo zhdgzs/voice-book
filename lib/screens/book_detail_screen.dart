@@ -190,6 +190,81 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     );
   }
 
+  /// 重新扫描文件夹
+  Future<void> _rescanFolder() async {
+    final bookProvider = context.read<BookProvider>();
+    final book = bookProvider.books
+        .firstWhere((b) => b.id == widget.book.id, orElse: () => widget.book);
+
+    if (book.sourceFolderPath == null) return;
+
+    try {
+      // 第一步：预览扫描结果
+      final preview = await showDialog<Map<String, int>>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => _RescanPreviewDialog(book: book, bookProvider: bookProvider),
+      );
+
+      // 用户取消或无变更
+      if (preview == null) return;
+
+      final total = preview['added']! + preview['removed']! + preview['updated']!;
+      if (total == 0) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('扫描完成，没有发现变更')),
+          );
+        }
+        return;
+      }
+
+      // 第二步：用户确认是否应用
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('确认应用变更'),
+          content: Text(
+            '发现以下变更：\n'
+            '• 新增 ${preview['added']} 个文件\n'
+            '• 删除 ${preview['removed']} 个文件\n'
+            '• 更新 ${preview['updated']} 个文件\n\n'
+            '是否应用这些变更？',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('应用'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true || !mounted) return;
+
+      // 第三步：应用变更
+      await bookProvider.applyRescanChanges(book, preview);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('已应用变更：新增 ${preview['added']} 个，删除 ${preview['removed']} 个，更新 ${preview['updated']} 个'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('扫描失败: $e')),
+        );
+      }
+    }
+  }
+
   /// 显示跳过设置对话框
   Future<void> _showSkipSettingsDialog() async {
     await showDialog(
@@ -341,6 +416,9 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
           PopupMenuButton<String>(
             onSelected: (value) {
               switch (value) {
+                case 'rescan':
+                  _rescanFolder();
+                  break;
                 case 'skip_settings':
                   _showSkipSettingsDialog();
                   break;
@@ -352,38 +430,53 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                   break;
               }
             },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'skip_settings',
-                child: Row(
-                  children: [
-                    Icon(Icons.skip_next),
-                    SizedBox(width: 8),
-                    Text('跳过设置'),
-                  ],
+            itemBuilder: (context) {
+              final book = context.read<BookProvider>().books
+                  .firstWhere((b) => b.id == widget.book.id, orElse: () => widget.book);
+              return [
+                if (book.sourceFolderPath != null)
+                  const PopupMenuItem(
+                    value: 'rescan',
+                    child: Row(
+                      children: [
+                        Icon(Icons.refresh),
+                        SizedBox(width: 8),
+                        Text('重新扫描'),
+                      ],
+                    ),
+                  ),
+                const PopupMenuItem(
+                  value: 'skip_settings',
+                  child: Row(
+                    children: [
+                      Icon(Icons.skip_next),
+                      SizedBox(width: 8),
+                      Text('跳过设置'),
+                    ],
+                  ),
                 ),
-              ),
-              const PopupMenuItem(
-                value: 'edit',
-                child: Row(
-                  children: [
-                    Icon(Icons.edit),
-                    SizedBox(width: 8),
-                    Text('编辑'),
-                  ],
+                const PopupMenuItem(
+                  value: 'edit',
+                  child: Row(
+                    children: [
+                      Icon(Icons.edit),
+                      SizedBox(width: 8),
+                      Text('编辑'),
+                    ],
+                  ),
                 ),
-              ),
-              const PopupMenuItem(
-                value: 'delete',
-                child: Row(
-                  children: [
-                    Icon(Icons.delete, color: Colors.red),
-                    SizedBox(width: 8),
-                    Text('删除', style: TextStyle(color: Colors.red)),
-                  ],
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete, color: Colors.red),
+                      SizedBox(width: 8),
+                      Text('删除', style: TextStyle(color: Colors.red)),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ];
+            },
           ),
         ],
       ),
@@ -508,5 +601,67 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
       },
     );
   }
+}
 
+/// 重新扫描预览对话框
+class _RescanPreviewDialog extends StatefulWidget {
+  final Book book;
+  final BookProvider bookProvider;
+
+  const _RescanPreviewDialog({required this.book, required this.bookProvider});
+
+  @override
+  State<_RescanPreviewDialog> createState() => _RescanPreviewDialogState();
+}
+
+class _RescanPreviewDialogState extends State<_RescanPreviewDialog> {
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _startScan();
+  }
+
+  Future<void> _startScan() async {
+    try {
+      final result = await widget.bookProvider.previewRescanFolder(widget.book);
+      if (mounted) {
+        Navigator.pop(context, result);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_error != null) {
+      return AlertDialog(
+        title: const Text('扫描失败'),
+        content: Text(_error!),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('确定'),
+          ),
+        ],
+      );
+    }
+
+    return const AlertDialog(
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircularProgressIndicator(),
+          SizedBox(height: 16),
+          Text('正在扫描文件夹...'),
+        ],
+      ),
+    );
+  }
 }

@@ -1,6 +1,6 @@
 name: voice_book
 description: Offline local audiobook player focusing on low resource usage and privacy.
-version: 0.2.1
+version: 1.0.0
 publish_to: "none"
 
 environment:
@@ -14,7 +14,7 @@ dependencies:
   sqflite: ^2.3.0
   path_provider: ^2.1.2
   just_audio: ^0.10.5
-  just_audio_background: ^0.0.1-beta.17
+  audio_service: ^0.18.17
   audio_session: ^0.1.18
   permission_handler: ^11.0.1
   device_info_plus: ^11.2.0
@@ -22,6 +22,9 @@ dependencies:
   path: ^1.8.3
   audio_metadata_reader: ^1.4.2
   file_picker: ^10.3.7
+  ffmpeg_kit_flutter_new_audio: ^2.0.0
+  package_info_plus: ^9.0.0
+  crypto: ^3.0.7
 
 dev_dependencies:
   flutter_test:
