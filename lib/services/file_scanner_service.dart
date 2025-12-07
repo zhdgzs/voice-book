@@ -22,17 +22,13 @@ class FileScannerService {
   // 元数据服务实例
   final AudioMetadataService _metadataService = AudioMetadataService();
 
-  /// 支持的音频文件扩展名
+  /// 支持的音频文件扩展名（原生支持 + 可转码格式）
   static const List<String> supportedExtensions = [
-    '.mp3',
-    '.m4a',
-    '.m4b',
-    '.wav',
-    '.flac',
-    '.aac',
-    '.ogg',
-    '.opus',
-    '.wma',
+    // just_audio 原生支持
+    '.mp3', '.m4a', '.m4b', '.wav', '.flac', '.aac', '.ogg', '.opus',
+    // 需要转码的格式
+    '.wma', '.ape', '.amr', '.ac3', '.dts', '.ra', '.rm',
+    '.wv', '.tta', '.mka', '.spx', '.caf', '.au', '.snd',
   ];
 
   /// 扫描指定目录下的音频文件

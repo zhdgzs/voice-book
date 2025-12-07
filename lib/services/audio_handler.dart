@@ -113,8 +113,8 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   }
 
   @override
-  Future<void> playMediaItem(MediaItem item) async {
-    debugPrint('🎵 playMediaItem 被调用: ${item.title}');
+  Future<void> playMediaItem(MediaItem mediaItem) async {
+    debugPrint('🎵 playMediaItem 被调用: ${mediaItem.title}');
     await play();
   }
 
