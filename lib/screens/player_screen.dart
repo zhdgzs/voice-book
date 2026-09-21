@@ -9,6 +9,7 @@ import '../providers/sleep_timer_provider.dart';
 import '../widgets/sleep_timer_dialog.dart';
 import '../widgets/skip_settings_dialog.dart';
 import '../widgets/bookmark_list_dialog.dart';
+import '../widgets/audio_file_details_dialog.dart';
 import '../models/bookmark.dart';
 import '../services/database_service.dart';
 import '../utils/helpers.dart';
@@ -581,6 +582,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                               audioPlayer.currentAudioFile?.id == audio.id;
 
                           return ListTile(
+                            dense: true,
+                            minVerticalPadding: 0,
+                            visualDensity: const VisualDensity(vertical: -2),
                             leading: isPlaying
                                 ? const Icon(Icons.volume_up,
                                     color: Colors.blue)
@@ -591,9 +595,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                   ),
                             title: Text(
                               audio.title,
-                              maxLines: 1,
+                              maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
+                                fontSize: 14,
+                                height: 1.1,
                                 fontWeight: isPlaying
                                     ? FontWeight.bold
                                     : FontWeight.normal,
@@ -602,8 +608,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             ),
                             subtitle: Text(
                               Helpers.formatDuration(audio.duration),
-                              style: Theme.of(context).textTheme.bodySmall,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    fontSize: 11,
+                                    height: 1,
+                                  ),
                             ),
+                            onLongPress: () =>
+                                showAudioFileDetails(context, audio),
                             onTap: () {
                               audioPlayer.loadAndPlay(audio);
                               Navigator.pop(context);

@@ -6,6 +6,8 @@ import '../providers/book_provider.dart';
 import '../providers/audio_player_provider.dart';
 import '../widgets/mini_player.dart';
 import '../widgets/skip_settings_dialog.dart';
+import '../widgets/source_folder_info.dart';
+import '../widgets/audio_file_details_dialog.dart';
 import '../main.dart';
 
 /// 书籍详情页面
@@ -28,6 +30,8 @@ class BookDetailScreen extends StatefulWidget {
 }
 
 class _BookDetailScreenState extends State<BookDetailScreen> {
+  static const double _audioItemExtent = 68;
+
   final ScrollController _scrollController = ScrollController();
   int? _lastScrolledAudioId; // 记录上次滚动到的音频ID
   bool _isInitialized = false; // 标记是否已初始化
@@ -161,9 +165,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
 
   /// 执行滚动操作
   void _performScroll(int index) {
-    // itemExtent 固定为 72
-    const itemHeight = 72.0;
-    final expectedOffset = index * itemHeight;
+    final expectedOffset = index * _audioItemExtent;
     final maxOffset = _scrollController.position.maxScrollExtent;
 
     debugPrint('📍 准备滚动到索引 $index，期望偏移: $expectedOffset, 最大偏移: $maxOffset');
@@ -224,12 +226,23 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('确认应用变更'),
-          content: Text(
-            '发现以下变更：\n'
-            '• 新增 ${preview['added']} 个文件\n'
-            '• 删除 ${preview['removed']} 个文件\n'
-            '• 更新 ${preview['updated']} 个文件\n\n'
-            '是否应用这些变更？',
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SourceFolderInfo(
+                path: book.sourceFolderPath,
+                label: '扫描目录',
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '发现以下变更：\n'
+                '• 新增 ${preview['added']} 个文件\n'
+                '• 删除 ${preview['removed']} 个文件\n'
+                '• 更新 ${preview['updated']} 个文件\n\n'
+                '是否应用这些变更？',
+              ),
+            ],
           ),
           actions: [
             TextButton(
@@ -313,10 +326,12 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
 
   /// 显示编辑对话框
   Future<void> _showEditDialog() async {
-    final titleController = TextEditingController(text: widget.book.title);
-    final authorController = TextEditingController(text: widget.book.author);
-    final descriptionController =
-        TextEditingController(text: widget.book.description);
+    final bookProvider = context.read<BookProvider>();
+    final book = bookProvider.books
+        .firstWhere((b) => b.id == widget.book.id, orElse: () => widget.book);
+    final titleController = TextEditingController(text: book.title);
+    final authorController = TextEditingController(text: book.author);
+    final descriptionController = TextEditingController(text: book.description);
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -350,6 +365,8 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                 ),
                 maxLines: 3,
               ),
+              const SizedBox(height: 16),
+              SourceFolderInfo(path: book.sourceFolderPath),
             ],
           ),
         ),
@@ -367,7 +384,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     );
 
     if (confirmed == true && mounted) {
-      final updatedBook = widget.book.copyWith(
+      final updatedBook = book.copyWith(
         title: titleController.text,
         author: authorController.text.isEmpty ? null : authorController.text,
         description: descriptionController.text.isEmpty
@@ -376,7 +393,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
         updatedAt: DateTime.now().millisecondsSinceEpoch,
       );
 
-      final success = await context.read<BookProvider>().updateBook(updatedBook);
+      final success = await bookProvider.updateBook(updatedBook);
       if (success && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('书籍信息已更新')),
@@ -516,7 +533,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
 
               return ListView.builder(
                 controller: _scrollController,
-                itemExtent: 72,
+                itemExtent: _audioItemExtent,
                 itemCount: audioFiles.length,
                 itemBuilder: (context, index) {
                   return _buildAudioFileItem(audioFiles[index], index);
@@ -546,7 +563,12 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
         return Container(
           color: isCurrentPlaying ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3) : null,
           child: ListTile(
+            dense: true,
+            minVerticalPadding: 0,
+            visualDensity: const VisualDensity(vertical: -2),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12),
             leading: CircleAvatar(
+              radius: 18,
               backgroundColor: isCurrentPlaying
                 ? Theme.of(context).colorScheme.primary
                 : Theme.of(context).colorScheme.primaryContainer,
@@ -565,16 +587,19 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
             ),
             title: Text(
               audioFile.fileName,
-              maxLines: 1,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
+                fontSize: 14,
+                height: 1.1,
                 fontWeight: isCurrentPlaying ? FontWeight.bold : null,
               ),
             ),
             subtitle: Text(
               '${audioFile.formattedDuration} • ${audioFile.formattedFileSize}',
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 11,
+                height: 1,
                 color: Colors.grey[600],
               ),
             ),
@@ -589,6 +614,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                 }
               },
             ),
+            onLongPress: () => showAudioFileDetails(context, audioFile),
             onTap: () {
               MainScreen.openPlayer(
                 context,
@@ -653,13 +679,19 @@ class _RescanPreviewDialogState extends State<_RescanPreviewDialog> {
       );
     }
 
-    return const AlertDialog(
+    return AlertDialog(
       content: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CircularProgressIndicator(),
-          SizedBox(height: 16),
-          Text('正在扫描文件夹...'),
+          const Center(child: CircularProgressIndicator()),
+          const SizedBox(height: 16),
+          const Center(child: Text('正在扫描文件夹...')),
+          const SizedBox(height: 16),
+          SourceFolderInfo(
+            path: widget.book.sourceFolderPath,
+            label: '扫描目录',
+          ),
         ],
       ),
     );

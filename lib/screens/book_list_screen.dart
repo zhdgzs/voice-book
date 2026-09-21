@@ -5,6 +5,7 @@ import '../models/book.dart';
 import '../utils/helpers.dart';
 import '../widgets/mini_player.dart';
 import '../widgets/skip_settings_dialog.dart';
+import '../widgets/source_folder_info.dart';
 import 'book_detail_screen.dart';
 
 /// 书籍列表页面
@@ -338,8 +339,17 @@ class _BookListScreenState extends State<BookListScreen> {
     final bookProvider = context.read<BookProvider>();
     if (book.sourceFolderPath == null) return;
 
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('正在扫描：${book.sourceFolderPath}'),
+        duration: const Duration(days: 1),
+      ),
+    );
+
     try {
       final preview = await bookProvider.previewRescanFolder(book);
+      if (mounted) messenger.hideCurrentSnackBar();
       final total = preview['added']! + preview['removed']! + preview['updated']!;
       if (total == 0) {
         if (mounted) {
@@ -355,12 +365,23 @@ class _BookListScreenState extends State<BookListScreen> {
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('确认应用变更'),
-          content: Text(
-            '发现以下变更：\n'
-            '• 新增 ${preview['added']} 个文件\n'
-            '• 删除 ${preview['removed']} 个文件\n'
-            '• 更新 ${preview['updated']} 个文件\n\n'
-            '是否应用这些变更？',
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SourceFolderInfo(
+                path: book.sourceFolderPath,
+                label: '扫描目录',
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '发现以下变更：\n'
+                '• 新增 ${preview['added']} 个文件\n'
+                '• 删除 ${preview['removed']} 个文件\n'
+                '• 更新 ${preview['updated']} 个文件\n\n'
+                '是否应用这些变更？',
+              ),
+            ],
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
@@ -379,6 +400,7 @@ class _BookListScreenState extends State<BookListScreen> {
       }
     } catch (e) {
       if (mounted) {
+        messenger.hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('扫描失败: $e')));
       }
     }
@@ -411,6 +433,8 @@ class _BookListScreenState extends State<BookListScreen> {
               TextField(controller: authorController, decoration: const InputDecoration(labelText: '作者', border: OutlineInputBorder())),
               const SizedBox(height: 16),
               TextField(controller: descriptionController, decoration: const InputDecoration(labelText: '描述', border: OutlineInputBorder()), maxLines: 3),
+              const SizedBox(height: 16),
+              SourceFolderInfo(path: book.sourceFolderPath),
             ],
           ),
         ),
