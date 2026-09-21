@@ -81,6 +81,11 @@ lib/generated_plugin_registrant.dart
 !/dev/ci/**/Gemfile.lock
 
 # Project specific
+# 签名文件（敏感信息，禁止提交）
+*.keystore
+*.jks
+android/key.properties
+
 *.db
 *.db-shm
 *.db-wal

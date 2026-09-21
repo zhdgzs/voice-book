@@ -38,6 +38,9 @@ class Book {
   /// 更新时间（Unix 时间戳，毫秒）
   final int updatedAt;
 
+  /// 源文件夹路径（用于重新扫描）
+  final String? sourceFolderPath;
+
   Book({
     this.id,
     required this.title,
@@ -51,6 +54,7 @@ class Book {
     this.skipEndSeconds = 0,
     required this.createdAt,
     required this.updatedAt,
+    this.sourceFolderPath,
   });
 
   /// 从数据库 Map 创建 Book 对象
@@ -68,6 +72,7 @@ class Book {
       skipEndSeconds: map['skip_end_seconds'] as int? ?? 0,
       createdAt: map['created_at'] as int,
       updatedAt: map['updated_at'] as int,
+      sourceFolderPath: map['source_folder_path'] as String?,
     );
   }
 
@@ -86,6 +91,7 @@ class Book {
       'skip_end_seconds': skipEndSeconds,
       'created_at': createdAt,
       'updated_at': updatedAt,
+      'source_folder_path': sourceFolderPath,
     };
   }
 
@@ -103,6 +109,7 @@ class Book {
     int? skipEndSeconds,
     int? createdAt,
     int? updatedAt,
+    String? sourceFolderPath,
   }) {
     return Book(
       id: id ?? this.id,
@@ -117,6 +124,7 @@ class Book {
       skipEndSeconds: skipEndSeconds ?? this.skipEndSeconds,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      sourceFolderPath: sourceFolderPath ?? this.sourceFolderPath,
     );
   }
 
@@ -141,7 +149,8 @@ class Book {
         other.skipStartSeconds == skipStartSeconds &&
         other.skipEndSeconds == skipEndSeconds &&
         other.createdAt == createdAt &&
-        other.updatedAt == updatedAt;
+        other.updatedAt == updatedAt &&
+        other.sourceFolderPath == sourceFolderPath;
   }
 
   @override
@@ -159,6 +168,7 @@ class Book {
       skipEndSeconds,
       createdAt,
       updatedAt,
+      sourceFolderPath,
     );
   }
 }

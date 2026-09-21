@@ -230,6 +230,7 @@ class _FileImportScreenState extends State<FileImportScreen> {
         totalDuration: totalDuration,
         createdAt: DateTime.now().millisecondsSinceEpoch,
         updatedAt: DateTime.now().millisecondsSinceEpoch,
+        sourceFolderPath: _selectedFolderPath,
       );
 
       final createdBook = await bookProvider.createBook(book);

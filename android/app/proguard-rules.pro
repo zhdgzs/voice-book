@@ -18,3 +18,8 @@
 
 # sqflite 相关
 -keep class com.tekartik.sqflite.** { *; }
+
+# FFmpeg Kit 相关 - 防止 JNI 调用被混淆
+-keep class com.arthenica.ffmpegkit.** { *; }
+-keep class com.arthenica.smartexception.** { *; }
+-keep class com.antonkarpenko.ffmpegkit.** { *; }

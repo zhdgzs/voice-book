@@ -261,6 +261,174 @@ class BookProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 预览重新扫描结果（不修改数据库）
+  /// 返回扫描结果：{added: 新增数, removed: 删除数, updated: 更新数}
+  Future<Map<String, int>> previewRescanFolder(Book book) async {
+    if (book.sourceFolderPath == null || book.id == null) {
+      throw Exception('书籍没有源文件夹路径');
+    }
+
+    final dir = Directory(book.sourceFolderPath!);
+    if (!await dir.exists()) {
+      throw Exception('源文件夹不存在: ${book.sourceFolderPath}');
+    }
+
+    // 扫描文件夹获取当前文件
+    final scannedFiles = <String, File>{};
+    await for (final entity in dir.list(recursive: true)) {
+      if (entity is File && _isAudioFile(entity.path)) {
+        scannedFiles[entity.path] = entity;
+      }
+    }
+
+    final db = await _databaseService.database;
+
+    // 获取现有音频记录
+    final existingRows = await db.query(
+      'audio_files',
+      where: 'book_id = ?',
+      whereArgs: [book.id],
+    );
+    final existingPaths = <String, int>{};
+    for (final row in existingRows) {
+      existingPaths[row['file_path'] as String] = row['file_size'] as int;
+    }
+
+    int added = 0, removed = 0, updated = 0;
+
+    // 检测删除的文件
+    for (final path in existingPaths.keys) {
+      if (!scannedFiles.containsKey(path)) {
+        removed++;
+      }
+    }
+
+    // 检测新增和更新的文件
+    for (final entry in scannedFiles.entries) {
+      final path = entry.key;
+      final file = entry.value;
+
+      if (!existingPaths.containsKey(path)) {
+        added++;
+      } else {
+        final stat = await file.stat();
+        if (stat.size != existingPaths[path]) {
+          updated++;
+        }
+      }
+    }
+
+    return {'added': added, 'removed': removed, 'updated': updated};
+  }
+
+  /// 应用重新扫描的变更
+  Future<void> applyRescanChanges(Book book, Map<String, int> preview) async {
+    if (book.sourceFolderPath == null || book.id == null) return;
+
+    final dir = Directory(book.sourceFolderPath!);
+    if (!await dir.exists()) return;
+
+    // 扫描文件夹获取当前文件
+    final scannedFiles = <String, File>{};
+    await for (final entity in dir.list(recursive: true)) {
+      if (entity is File && _isAudioFile(entity.path)) {
+        scannedFiles[entity.path] = entity;
+      }
+    }
+
+    final db = await _databaseService.database;
+
+    // 获取现有音频记录
+    final existingRows = await db.query(
+      'audio_files',
+      where: 'book_id = ?',
+      whereArgs: [book.id],
+    );
+    final existingPaths = <String, Map<String, dynamic>>{};
+    for (final row in existingRows) {
+      existingPaths[row['file_path'] as String] = row;
+    }
+
+    // 删除不存在的文件
+    for (final path in existingPaths.keys) {
+      if (!scannedFiles.containsKey(path)) {
+        await db.delete('audio_files', where: 'file_path = ?', whereArgs: [path]);
+      }
+    }
+
+    // 新增和更新文件
+    int maxSortOrder = existingRows.isEmpty
+        ? -1
+        : existingRows.map((r) => r['sort_order'] as int).reduce((a, b) => a > b ? a : b);
+
+    for (final entry in scannedFiles.entries) {
+      final path = entry.key;
+      final file = entry.value;
+
+      if (!existingPaths.containsKey(path)) {
+        maxSortOrder++;
+        final stat = await file.stat();
+        final fileName = path.split(Platform.pathSeparator).last;
+        await db.insert('audio_files', {
+          'book_id': book.id,
+          'file_path': path,
+          'file_name': fileName,
+          'file_size': stat.size,
+          'duration': 0,
+          'sort_order': maxSortOrder,
+          'created_at': DateTime.now().millisecondsSinceEpoch,
+        });
+      } else {
+        final existing = existingPaths[path]!;
+        final stat = await file.stat();
+        if (stat.size != existing['file_size']) {
+          await db.update(
+            'audio_files',
+            {'file_size': stat.size, 'duration': 0},
+            where: 'id = ?',
+            whereArgs: [existing['id']],
+          );
+        }
+      }
+    }
+
+    // 更新书籍总时长
+    final totalResult = await db.rawQuery(
+      'SELECT SUM(duration) as total FROM audio_files WHERE book_id = ?',
+      [book.id],
+    );
+    final totalDuration = totalResult.first['total'] as int? ?? 0;
+    await db.update(
+      'books',
+      {
+        'total_duration': totalDuration,
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+      },
+      where: 'id = ?',
+      whereArgs: [book.id],
+    );
+
+    // 刷新数据
+    await loadBooks();
+    if (_currentBook?.id == book.id) {
+      await loadAudioFilesForBook(book.id!);
+    }
+
+    // 后台补全新增文件的时长
+    _updateMissingDurations();
+  }
+
+  /// 判断是否为支持的音频文件
+  bool _isAudioFile(String path) {
+    const extensions = [
+      '.mp3', '.m4a', '.m4b', '.wav', '.flac', '.aac', '.ogg', '.opus',
+      '.wma', '.ape', '.amr', '.ac3', '.dts', '.ra', '.rm',
+      '.wv', '.tta', '.mka', '.spx', '.caf', '.au', '.snd',
+    ];
+    final lower = path.toLowerCase();
+    return extensions.any((ext) => lower.endsWith(ext));
+  }
+
   /// 后台补全缺失的音频时长（duration=0 的记录）
   Future<void> _updateMissingDurations() async {
     try {

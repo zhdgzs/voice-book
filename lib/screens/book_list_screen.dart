@@ -4,6 +4,7 @@ import '../providers/book_provider.dart';
 import '../models/book.dart';
 import '../utils/helpers.dart';
 import '../widgets/mini_player.dart';
+import '../widgets/skip_settings_dialog.dart';
 import 'book_detail_screen.dart';
 
 /// 书籍列表页面
@@ -32,6 +33,9 @@ class _BookListScreenState extends State<BookListScreen> {
 
   /// 是否只显示收藏
   bool _showFavoritesOnly = false;
+
+  /// 记录长按位置
+  Offset _lastTapPosition = Offset.zero;
 
   @override
   void initState() {
@@ -261,6 +265,203 @@ class _BookListScreenState extends State<BookListScreen> {
     );
   }
 
+  /// 显示书籍操作菜单
+  void _showBookMenu(BuildContext context, Book book, Offset position) {
+    final bookProvider = context.read<BookProvider>();
+    showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx, position.dy),
+      items: [
+        if (book.sourceFolderPath != null)
+          const PopupMenuItem(
+            value: 'rescan',
+            child: Row(
+              children: [
+                Icon(Icons.refresh),
+                SizedBox(width: 8),
+                Text('重新扫描'),
+              ],
+            ),
+          ),
+        const PopupMenuItem(
+          value: 'skip_settings',
+          child: Row(
+            children: [
+              Icon(Icons.skip_next),
+              SizedBox(width: 8),
+              Text('跳过设置'),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'edit',
+          child: Row(
+            children: [
+              Icon(Icons.edit),
+              SizedBox(width: 8),
+              Text('编辑'),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'delete',
+          child: Row(
+            children: [
+              Icon(Icons.delete, color: Colors.red),
+              SizedBox(width: 8),
+              Text('删除', style: TextStyle(color: Colors.red)),
+            ],
+          ),
+        ),
+      ],
+    ).then((value) {
+      if (value == null) return;
+      switch (value) {
+        case 'rescan':
+          _rescanFolder(book);
+          break;
+        case 'skip_settings':
+          _showSkipSettingsDialog(book);
+          break;
+        case 'edit':
+          _showEditDialog(book);
+          break;
+        case 'delete':
+          _showDeleteConfirmDialog(book, bookProvider);
+          break;
+      }
+    });
+  }
+
+  /// 重新扫描文件夹
+  Future<void> _rescanFolder(Book book) async {
+    final bookProvider = context.read<BookProvider>();
+    if (book.sourceFolderPath == null) return;
+
+    try {
+      final preview = await bookProvider.previewRescanFolder(book);
+      final total = preview['added']! + preview['removed']! + preview['updated']!;
+      if (total == 0) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('扫描完成，没有发现变更')),
+          );
+        }
+        return;
+      }
+
+      if (!mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('确认应用变更'),
+          content: Text(
+            '发现以下变更：\n'
+            '• 新增 ${preview['added']} 个文件\n'
+            '• 删除 ${preview['removed']} 个文件\n'
+            '• 更新 ${preview['updated']} 个文件\n\n'
+            '是否应用这些变更？',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('应用')),
+          ],
+        ),
+      );
+
+      if (confirmed == true && mounted) {
+        await bookProvider.applyRescanChanges(book, preview);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('已应用变更：新增 ${preview['added']} 个，删除 ${preview['removed']} 个，更新 ${preview['updated']} 个')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('扫描失败: $e')));
+      }
+    }
+  }
+
+  /// 显示跳过设置对话框
+  Future<void> _showSkipSettingsDialog(Book book) async {
+    await showDialog(
+      context: context,
+      builder: (context) => SkipSettingsDialog(bookId: book.id!, isFromPlayer: false),
+    );
+  }
+
+  /// 显示编辑对话框
+  Future<void> _showEditDialog(Book book) async {
+    final titleController = TextEditingController(text: book.title);
+    final authorController = TextEditingController(text: book.author);
+    final descriptionController = TextEditingController(text: book.description);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('编辑书籍'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: titleController, decoration: const InputDecoration(labelText: '标题', border: OutlineInputBorder())),
+              const SizedBox(height: 16),
+              TextField(controller: authorController, decoration: const InputDecoration(labelText: '作者', border: OutlineInputBorder())),
+              const SizedBox(height: 16),
+              TextField(controller: descriptionController, decoration: const InputDecoration(labelText: '描述', border: OutlineInputBorder()), maxLines: 3),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('保存')),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      final updatedBook = book.copyWith(
+        title: titleController.text,
+        author: authorController.text.isEmpty ? null : authorController.text,
+        description: descriptionController.text.isEmpty ? null : descriptionController.text,
+        updatedAt: DateTime.now().millisecondsSinceEpoch,
+      );
+      await context.read<BookProvider>().updateBook(updatedBook);
+    }
+
+    titleController.dispose();
+    authorController.dispose();
+    descriptionController.dispose();
+  }
+
+  /// 显示删除确认对话框
+  Future<void> _showDeleteConfirmDialog(Book book, BookProvider bookProvider) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('确认删除'),
+        content: Text('确定要删除《${book.title}》吗？\n此操作无法撤销。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      final success = await bookProvider.deleteBook(book.id!);
+      if (success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('书籍已删除')));
+      }
+    }
+  }
+
   /// 构建书籍卡片
   Widget _buildBookCard(
       BuildContext context, Book book, BookProvider bookProvider) {
@@ -273,6 +474,8 @@ class _BookListScreenState extends State<BookListScreen> {
             MaterialPageRoute(builder: (_) => BookDetailScreen(book: book)),
           );
         },
+        onLongPress: () => _showBookMenu(context, book, _lastTapPosition),
+        onTapDown: (details) => _lastTapPosition = details.globalPosition,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(12),

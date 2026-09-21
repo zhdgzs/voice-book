@@ -12,6 +12,7 @@ import '../models/playback_progress.dart';
 import '../services/database_service.dart';
 import '../services/audio_handler.dart';
 import '../main.dart' show audioHandler;
+import '../services/audio_transcode_service.dart';
 import 'package:sqflite/sqflite.dart';
 
 /// 音频播放器 Provider
@@ -87,6 +88,21 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
     audioHandler.setCallback(this);
     _initializeAudioSession();
     _initializePlayer();
+    // 不在构造函数中访问数据库，避免与其他 Provider 的数据库访问冲突
+    // 转码支持延迟初始化，避免阻塞应用启动
+    _initializeTranscodeSupportAsync();
+  }
+
+  /// 初始化音频转码支持（异步，不阻塞构造函数）
+  void _initializeTranscodeSupportAsync() {
+    Future.microtask(() async {
+      try {
+        await AudioTranscodeService().initialize();
+        debugPrint('✅ 音频转码支持已初始化');
+      } catch (e) {
+        debugPrint('⚠️ 转码支持初始化失败（不影响原生格式播放）: $e');
+      }
+    });
   }
 
   /// 确保已初始化（懒加载）
@@ -256,13 +272,17 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
 
   /// 加载并播放音频文件
   Future<void> loadAndPlay(AudioFile audioFile, {int? bookId}) async {
-    try {
-      // 如果是同一个文件，直接播放
-      if (_currentAudioFile?.id == audioFile.id) {
-        await play();
-        return;
-      }
+    // 如果是同一个文件，直接播放
+    if (_currentAudioFile?.id == audioFile.id) {
+      await play();
+      return;
+    }
 
+    // 保存原状态，用于失败时恢复
+    final previousAudioFile = _currentAudioFile;
+    final previousBookId = _currentBookId;
+
+    try {
       // 重置播放完成标志
       _hasTriggeredCompletion = false;
 
@@ -281,10 +301,9 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
       // 加载书籍信息（用于获取跳过设置）
       await _loadBookInfo(_currentBookId!);
 
-      // 加载书籍的所有音频文件作为播放列表（支持通知栏按钮）
-      // 必须等待完成，确保通知栏 MediaItem 立即更新
+      // 加载书籍播放列表（包含正确的索引，通知栏会显示正确标题，自动处理转码）
       await _loadBookPlaylist(audioFile, _currentBookId!);
-      notifyListeners(); // 立即通知监听器，更新通知栏
+      notifyListeners();
 
       // 恢复播放进度
       await _restoreProgress();
@@ -300,6 +319,12 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
     } on PlayerInterruptedException {
       // 加载被中断（用户快速切换），忽略此错误
       debugPrint('音频加载被中断，用户切换了音频');
+    } on TranscodeNotSupportedException catch (e) {
+      // 恢复原状态
+      _currentAudioFile = previousAudioFile;
+      _currentBookId = previousBookId;
+      _errorMessage = e.message;
+      debugPrint('❌ $_errorMessage');
     } catch (e) {
       _errorMessage = '加载音频文件失败: $e';
       debugPrint(_errorMessage);
@@ -612,14 +637,10 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
 
   /// 播放下一首
   Future<void> playNext() async {
-    debugPrint('▶️ playNext 开始');
     final nextAudio = await _getNextAudioFile();
-    debugPrint('▶️ playNext 获取到下一个音频: ${nextAudio?.fileName}');
     if (nextAudio != null) {
       await loadAndPlay(nextAudio, bookId: _currentBookId);
-      debugPrint('▶️ playNext loadAndPlay 完成');
     }
-    debugPrint('▶️ playNext 结束');
   }
 
   /// 播放上一首
@@ -736,7 +757,10 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
   }
 
   /// 加载书籍的所有音频作为播放列表（支持通知栏的上一个/下一个按钮）
+  /// 自动处理需要转码的音频格式
   Future<void> _loadBookPlaylist(AudioFile currentAudio, int bookId) async {
+    final previousPlaylist = _playlist;
+
     try {
       final db = await _databaseService.database;
       final audioFileMaps = await db.query(
@@ -746,29 +770,62 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
         orderBy: 'sort_order ASC, file_name ASC',
       );
 
+      // 处理当前音频的转码
+      final transcodeService = AudioTranscodeService();
+      String? transcodedPath;
+      if (transcodeService.needsTranscode(currentAudio.filePath)) {
+        // lite 版本不支持转码，抛出异常
+        if (!AudioTranscodeService.isSupported) {
+          throw TranscodeNotSupportedException();
+        }
+        debugPrint('🔄 检测到需要转码的格式，开始转码...');
+        if (!transcodeService.isInitialized) {
+          await transcodeService.initialize();
+        }
+        transcodedPath = await transcodeService.transcodeToWav(currentAudio.filePath);
+        debugPrint('✅ 转码完成: $transcodedPath');
+      }
+
       if (audioFileMaps.isEmpty) {
         debugPrint('❌ 书籍中没有音频文件，加载单个音频, bookId: $bookId');
         _playlist = [currentAudio];
-        await audioHandler.setAudioSource(_createAudioSource(currentAudio));
+        await audioHandler.setAudioSource(
+          _createAudioSource(currentAudio, overridePath: transcodedPath),
+        );
         audioHandler.updateQueueWithIndex([_createMediaItem(currentAudio, _currentBook)], 0);
         return;
       }
 
       final audioFiles = audioFileMaps.map((map) => AudioFile.fromMap(map)).toList();
-      _playlist = audioFiles;
-      final playlist = audioFiles.map((audio) => _createAudioSource(audio)).toList();
-      final mediaItems = audioFiles.map((audio) => _createMediaItem(audio, _currentBook)).toList();
       final currentIndex = audioFiles.indexWhere((audio) => audio.id == currentAudio.id);
+      final mediaItems = audioFiles.map((audio) => _createMediaItem(audio, _currentBook)).toList();
 
-      debugPrint('📚 加载播放列表: ${audioFiles.length} 个音频，当前索引: $currentIndex');
+      // 检查是否有需要转码的文件
+      final hasTranscodableFiles = audioFiles.any((a) => transcodeService.needsTranscode(a.filePath));
 
-      await audioHandler.setAudioSources(playlist, initialIndex: currentIndex >= 0 ? currentIndex : 0);
-      audioHandler.updateQueueWithIndex(mediaItems, currentIndex >= 0 ? currentIndex : 0);
+      if (hasTranscodableFiles) {
+        // 有需要转码的文件时，使用单文件模式（避免播放列表中未转码文件报错）
+        _playlist = [currentAudio];
+        debugPrint('📚 检测到需要转码的文件，使用单文件播放模式，当前索引: $currentIndex');
+        // 先设置音频源（会触发 currentIndexStream 发出 0）
+        await audioHandler.setAudioSource(_createAudioSource(currentAudio, overridePath: transcodedPath));
+        // 再更新队列，确保 mediaItem 显示正确的标题
+        debugPrint('📚 加载单个音频: ${currentAudio.fileName},$transcodedPath');
+        audioHandler.updateQueueWithIndex(mediaItems, currentIndex >= 0 ? currentIndex : 0);
+
+        debugPrint('📚 加载单个音频222: ${currentAudio.fileName},$transcodedPath');
+      } else {
+        // 全部是原生支持格式，使用播放列表模式
+        _playlist = audioFiles;
+        final playlist = audioFiles.map((audio) => _createAudioSource(audio)).toList();
+        debugPrint('📚 加载播放列表: ${audioFiles.length} 个音频，当前索引: $currentIndex');
+        audioHandler.updateQueueWithIndex(mediaItems, currentIndex >= 0 ? currentIndex : 0);
+        await audioHandler.setAudioSources(playlist, initialIndex: currentIndex >= 0 ? currentIndex : 0);
+      }
     } catch (e) {
+      _playlist = previousPlaylist;
       debugPrint('❌ 加载播放列表失败: $e');
-      _playlist = [currentAudio];
-      await audioHandler.setAudioSource(_createAudioSource(currentAudio));
-      audioHandler.updateQueueWithIndex([_createMediaItem(currentAudio, _currentBook)], 0);
+      rethrow;
     }
   }
 
@@ -794,8 +851,8 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
   }
 
   /// 创建 AudioSource
-  AudioSource _createAudioSource(AudioFile audioFile) {
-    return AudioSource.uri(Uri.file(audioFile.filePath));
+  AudioSource _createAudioSource(AudioFile audioFile, {String? overridePath}) {
+    return AudioSource.uri(Uri.file(overridePath ?? audioFile.filePath));
   }
 
   /// 创建 MediaItem（用于通知栏和锁屏页显示）
@@ -854,6 +911,7 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
   @override
   void dispose() {
     _saveProgress();
+    _audioPlayer.dispose();
     super.dispose();
   }
 }

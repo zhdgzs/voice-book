@@ -27,9 +27,6 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
     // 监听播放状态变化，更新通知栏
     _player.playerStateStream.listen((_) => _broadcastState());
     _player.currentIndexStream.listen((index) {
-      if (index != null && queue.value.isNotEmpty && index < queue.value.length) {
-        mediaItem.add(queue.value[index]);
-      }
       _broadcastState();
     });
     // 初始化时广播初始状态
@@ -113,8 +110,8 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   }
 
   @override
-  Future<void> playMediaItem(MediaItem item) async {
-    debugPrint('🎵 playMediaItem 被调用: ${item.title}');
+  Future<void> playMediaItem(MediaItem mediaItem) async {
+    debugPrint('🎵 playMediaItem 被调用: ${mediaItem.title}');
     await play();
   }
 
@@ -130,9 +127,19 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
 
   /// 更新队列和当前媒体项
   void updateQueueWithIndex(List<MediaItem> items, int currentIndex) {
+    
+    debugPrint('📚 加载单个音频333: ${queue.value}');
     queue.add(items);
+  
+    debugPrint('📚 加载单个音频33311: ${queue.value}');
+    
+    debugPrint('📚 加载单个音频555: ${items[currentIndex]}');
     if (items.isNotEmpty && currentIndex < items.length) {
+      
+    debugPrint('📚 加载单个音频666: ${mediaItem.value}');
       mediaItem.add(items[currentIndex]);
+      
+    debugPrint('📚 加载单个音频66611: ${mediaItem.value}');
     }
   }
   
