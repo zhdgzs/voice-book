@@ -36,6 +36,9 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
   /// 当前书籍对象（用于获取跳过设置）
   Book? _currentBook;
 
+  /// 当前加载到播放器中的音频队列
+  List<AudioFile> _playlist = const [];
+
   /// 播放状态
   PlayerState _playerState = PlayerState(false, ProcessingState.idle);
 
@@ -241,6 +244,9 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
       }
     });
 
+    // 播放列表会在音频结束后自动推进，需要同步业务层的当前音频。
+    _audioPlayer.currentIndexStream.listen(_syncCurrentAudioFromPlaylist);
+
     // 监听播放速度变化
     _audioPlayer.speedStream.listen((speed) {
       _playbackSpeed = speed;
@@ -327,7 +333,7 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
         await _loadBookPlaylist(_currentAudioFile!, _currentBookId!);
       }
 
-     ，play() 会等到播放完成才返回
+      // 不等待 play()，因为它会在播放完成后才返回。
       _audioPlayer.play();
 
       // 更新书籍的当前音频文件ID
@@ -742,12 +748,14 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
 
       if (audioFileMaps.isEmpty) {
         debugPrint('❌ 书籍中没有音频文件，加载单个音频, bookId: $bookId');
+        _playlist = [currentAudio];
         await audioHandler.setAudioSource(_createAudioSource(currentAudio));
         audioHandler.updateQueueWithIndex([_createMediaItem(currentAudio, _currentBook)], 0);
         return;
       }
 
       final audioFiles = audioFileMaps.map((map) => AudioFile.fromMap(map)).toList();
+      _playlist = audioFiles;
       final playlist = audioFiles.map((audio) => _createAudioSource(audio)).toList();
       final mediaItems = audioFiles.map((audio) => _createMediaItem(audio, _currentBook)).toList();
       final currentIndex = audioFiles.indexWhere((audio) => audio.id == currentAudio.id);
@@ -758,9 +766,31 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
       audioHandler.updateQueueWithIndex(mediaItems, currentIndex >= 0 ? currentIndex : 0);
     } catch (e) {
       debugPrint('❌ 加载播放列表失败: $e');
+      _playlist = [currentAudio];
       await audioHandler.setAudioSource(_createAudioSource(currentAudio));
       audioHandler.updateQueueWithIndex([_createMediaItem(currentAudio, _currentBook)], 0);
     }
+  }
+
+  /// 同步播放器自动推进后的当前音频，确保页面和列表显示正确。
+  void _syncCurrentAudioFromPlaylist(int? index) {
+    if (index == null || index < 0 || index >= _playlist.length) return;
+
+    final audioFile = _playlist[index];
+    if (_currentAudioFile?.id == audioFile.id) return;
+
+    _currentAudioFile = audioFile;
+    _position = 0;
+    _duration = audioFile.duration;
+    _hasTriggeredCompletion = false;
+
+    debugPrint('🔄 播放列表已自动切换: ${audioFile.fileName} (索引: $index)');
+
+    if (_currentBookId != null && audioFile.id != null) {
+      _updateBookCurrentAudio(_currentBookId!, audioFile.id!);
+    }
+
+    notifyListeners();
   }
 
   /// 创建 AudioSource
