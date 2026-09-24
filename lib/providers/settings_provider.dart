@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../utils/list_sort.dart';
 
 /// 设置管理 Provider
 ///
@@ -12,6 +13,37 @@ class SettingsProvider extends ChangeNotifier {
   static const String _keyDefaultPlaybackSpeed = 'default_playback_speed';
   static const String _keyAutoPlay = 'auto_play';
   static const String _keySleepTimerDuration = 'sleep_timer_duration';
+
+  static const String _keyBookSortField = 'book_sort_field';
+  static const String _keyBookSortAscending = 'book_sort_ascending';
+  static const String _keyAudioSortField = 'audio_sort_field';
+  static const String _keyAudioSortAscending = 'audio_sort_ascending';
+
+  ListSortField _bookSortField = ListSortField.name;
+  bool _bookSortAscending = true;
+  ListSortField _audioSortField = ListSortField.name;
+  bool _audioSortAscending = true;
+
+  ListSortField get bookSortField => _bookSortField;
+  bool get bookSortAscending => _bookSortAscending;
+  ListSortField get audioSortField => _audioSortField;
+  bool get audioSortAscending => _audioSortAscending;
+
+  Future<void> setBookSort(ListSortField field, bool ascending) async {
+    _bookSortField = field;
+    _bookSortAscending = ascending;
+    notifyListeners();
+    await _prefs?.setInt(_keyBookSortField, field.index);
+    await _prefs?.setBool(_keyBookSortAscending, ascending);
+  }
+
+  Future<void> setAudioSort(ListSortField field, bool ascending) async {
+    _audioSortField = field;
+    _audioSortAscending = ascending;
+    notifyListeners();
+    await _prefs?.setInt(_keyAudioSortField, field.index);
+    await _prefs?.setBool(_keyAudioSortAscending, ascending);
+  }
 
   SharedPreferences? _prefs;
 
@@ -62,6 +94,18 @@ class SettingsProvider extends ChangeNotifier {
     // 加载睡眠定时器时长
     _sleepTimerDuration = _prefs!.getInt(_keySleepTimerDuration) ?? 30;
 
+    // 加载排序偏好，忽略不再受支持的旧值。
+    final bookField = _prefs!.getInt(_keyBookSortField);
+    final audioField = _prefs!.getInt(_keyAudioSortField);
+    if (bookField != null && bookField >= 0 && bookField < ListSortField.values.length) {
+      _bookSortField = ListSortField.values[bookField];
+    }
+    if (audioField != null && audioField >= 0 && audioField < ListSortField.values.length) {
+      _audioSortField = ListSortField.values[audioField];
+    }
+    _bookSortAscending = _prefs!.getBool(_keyBookSortAscending) ?? true;
+    _audioSortAscending = _prefs!.getBool(_keyAudioSortAscending) ?? true;
+
     notifyListeners();
   }
 
@@ -102,6 +146,10 @@ class SettingsProvider extends ChangeNotifier {
     _defaultPlaybackSpeed = 1.0;
     _autoPlay = true;
     _sleepTimerDuration = 30;
+    _bookSortField = ListSortField.name;
+    _bookSortAscending = true;
+    _audioSortField = ListSortField.name;
+    _audioSortAscending = true;
 
     await _prefs?.clear();
     notifyListeners();

@@ -3,6 +3,9 @@ import 'package:provider/provider.dart';
 import '../models/book.dart';
 import '../models/audio_file.dart';
 import '../providers/book_provider.dart';
+import '../providers/settings_provider.dart';
+import '../utils/list_sort.dart';
+import '../widgets/list_sort_menu.dart';
 import '../providers/audio_player_provider.dart';
 import '../widgets/mini_player.dart';
 import '../widgets/skip_settings_dialog.dart';
@@ -36,6 +39,24 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
   int? _lastScrolledAudioId; // 记录上次滚动到的音频ID
   bool _isInitialized = false; // 标记是否已初始化
   int? _pendingScrollAudioId; // 当未加载播放器时用于定位的音频ID
+
+  List<AudioFile> _sortedAudioFiles() {
+    final settings = context.read<SettingsProvider>();
+    return sortAudioFiles(context.read<BookProvider>().currentBookAudioFiles,
+        settings.audioSortField, settings.audioSortAscending);
+  }
+
+  Future<void> _changeAudioSort(ListSortField field, bool ascending) async {
+    await context.read<SettingsProvider>().setAudioSort(field, ascending);
+    if (!mounted) return;
+    await context.read<AudioPlayerProvider>().refreshPlaylistOrder();
+    if (mounted) {
+      _lastScrolledAudioId = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _scrollToCurrentAudio();
+      });
+    }
+  }
 
   @override
   void initState() {
@@ -107,7 +128,6 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
 
   /// 滚动到当前播放的音频（基于索引计算）
   void _scrollToCurrentAudio() {
-    final bookProvider = context.read<BookProvider>();
     final audioPlayerProvider = context.read<AudioPlayerProvider>();
 
     // 使用 AudioPlayerProvider 的当前音频ID
@@ -119,7 +139,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     }
 
     // 确保音频列表已加载
-    final audioFiles = bookProvider.currentBookAudioFiles;
+    final audioFiles = _sortedAudioFiles();
     if (audioFiles.isEmpty) {
       debugPrint('⚠️ 音频列表为空，无法定位');
       return;
@@ -130,8 +150,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
 
   /// 根据指定音频ID滚动
   void _scrollToAudioId(int audioId) {
-    final bookProvider = context.read<BookProvider>();
-    final audioFiles = bookProvider.currentBookAudioFiles;
+    final audioFiles = _sortedAudioFiles();
 
     final index = audioFiles.indexWhere((f) => f.id == audioId);
     if (index < 0) {
@@ -141,7 +160,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
 
     // 如果是第一个音频，不需要滚动
     if (index == 0) {
-      debugPrint('✅ 当前音频是第一个，无需滚动');
+      if (_scrollController.hasClients) _scrollController.jumpTo(0);
       _lastScrolledAudioId = audioId;
       return;
     }
@@ -413,6 +432,12 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
       appBar: AppBar(
         title: Text(widget.book.title),
         actions: [
+          Consumer<SettingsProvider>(builder: (context, settings, _) => ListSortMenu(
+            field: settings.audioSortField,
+            ascending: settings.audioSortAscending,
+            isBookList: false,
+            onChanged: _changeAudioSort,
+          )),
           // 收藏按钮
           Consumer<BookProvider>(
             builder: (context, bookProvider, child) {
@@ -502,7 +527,9 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
           // 音频文件列表
           Consumer<BookProvider>(
             builder: (context, bookProvider, child) {
-              final audioFiles = bookProvider.currentBookAudioFiles;
+              final settings = context.watch<SettingsProvider>();
+              final audioFiles = sortAudioFiles(bookProvider.currentBookAudioFiles,
+                  settings.audioSortField, settings.audioSortAscending);
 
               if (bookProvider.isLoading) {
                 return const Center(child: CircularProgressIndicator());

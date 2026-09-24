@@ -6,6 +6,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:voice_book/providers/settings_provider.dart';
 import 'package:voice_book/providers/sleep_timer_provider.dart';
+import '../utils/list_sort.dart';
 import '../models/audio_file.dart';
 import '../models/book.dart';
 import '../models/playback_progress.dart';
@@ -556,6 +557,35 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
     await _saveProgress();
   }
 
+  bool _reorderingPlaylist = false;
+  List<AudioFile> _sortedAudioRows(List<Map<String, dynamic>> rows) {
+    final settings = _settingsProvider;
+    return sortAudioFiles(rows.map(AudioFile.fromMap).toList(),
+        settings?.audioSortField ?? ListSortField.name,
+        settings?.audioSortAscending ?? true);
+  }
+
+  /// 重建播放队列并恢复当前音频、进度和播放状态。
+  Future<void> refreshPlaylistOrder() async {
+    if (_currentAudioFile == null || _currentBookId == null) return;
+    final current = _currentAudioFile!;
+    final position = _audioPlayer.position;
+    final wasPlaying = _audioPlayer.playing;
+    _reorderingPlaylist = true;
+    try {
+      await _loadBookPlaylist(current, _currentBookId!);
+      await _audioPlayer.seek(position);
+      _currentAudioFile = current;
+      _position = position.inMilliseconds;
+      if (wasPlaying) _audioPlayer.play();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('更新播放顺序失败: $e');
+    } finally {
+      _reorderingPlaylist = false;
+    }
+  }
+
   /// 获取下一个音频文件
   Future<AudioFile?> _getNextAudioFile() async {
     if (_currentAudioFile == null || _currentBookId == null) {
@@ -579,7 +609,7 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
         return null;
       }
 
-      final audioFiles = audioFileMaps.map((map) => AudioFile.fromMap(map)).toList();
+      final audioFiles = _sortedAudioRows(audioFileMaps);
 
       // 找到当前音频的索引
       final currentIndex = audioFiles.indexWhere(
@@ -621,7 +651,7 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
 
       if (audioFileMaps.isEmpty) return null;
 
-      final audioFiles = audioFileMaps.map((map) => AudioFile.fromMap(map)).toList();
+      final audioFiles = _sortedAudioRows(audioFileMaps);
       final currentIndex = audioFiles.indexWhere((audio) => audio.id == _currentAudioFile!.id);
 
       if (currentIndex > 0) {
@@ -796,7 +826,7 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
         return;
       }
 
-      final audioFiles = audioFileMaps.map((map) => AudioFile.fromMap(map)).toList();
+      final audioFiles = _sortedAudioRows(audioFileMaps);
       final currentIndex = audioFiles.indexWhere((audio) => audio.id == currentAudio.id);
       final mediaItems = audioFiles.map((audio) => _createMediaItem(audio, _currentBook)).toList();
 
@@ -831,7 +861,7 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
 
   /// 同步播放器自动推进后的当前音频，确保页面和列表显示正确。
   void _syncCurrentAudioFromPlaylist(int? index) {
-    if (index == null || index < 0 || index >= _playlist.length) return;
+    if (_reorderingPlaylist || index == null || index < 0 || index >= _playlist.length) return;
 
     final audioFile = _playlist[index];
     if (_currentAudioFile?.id == audioFile.id) return;

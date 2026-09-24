@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/book_provider.dart';
+import '../providers/settings_provider.dart';
+import '../utils/list_sort.dart';
+import '../widgets/list_sort_menu.dart';
 import '../models/book.dart';
 import '../utils/helpers.dart';
 import '../widgets/mini_player.dart';
@@ -84,6 +87,12 @@ class _BookListScreenState extends State<BookListScreen> {
       appBar: AppBar(
         title: const Text('我的书架'),
         actions: [
+          Consumer<SettingsProvider>(builder: (context, settings, _) => ListSortMenu(
+            field: settings.bookSortField,
+            ascending: settings.bookSortAscending,
+            isBookList: true,
+            onChanged: settings.setBookSort,
+          )),
           // 收藏筛选按钮
           IconButton(
             icon: Icon(
@@ -188,7 +197,9 @@ class _BookListScreenState extends State<BookListScreen> {
                 }
 
                 // 过滤书籍
-                final filteredBooks = _filterBooks(bookProvider.books);
+                final settings = context.watch<SettingsProvider>();
+                final filteredBooks = sortBooks(_filterBooks(bookProvider.books),
+                    settings.bookSortField, settings.bookSortAscending);
 
                 // 空状态
                 if (filteredBooks.isEmpty) {
