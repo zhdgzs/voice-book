@@ -158,6 +158,8 @@ jobs:
     needs: [build-full, build-lite]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
 
     steps:
     - name: 下载 Full 版本 APK
@@ -192,4 +194,4 @@ jobs:
         prerelease: false
         fail_on_unmatched_files: false
       env:
-        GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ github.token }}

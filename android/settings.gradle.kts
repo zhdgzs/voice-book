@@ -20,9 +20,9 @@ dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
 
     repositories {
-        maven("https://storage.flutter-io.cn/download.flutter.io")
         google()
         mavenCentral()
+        maven("https://storage.googleapis.com/download.flutter.io")
     }
 }
 
