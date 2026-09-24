@@ -93,3 +93,8 @@ android/key.properties
 *.sqlite3
 /assets/cache/
 /logs/
+
+.claude
+.codex
+.pi
+
