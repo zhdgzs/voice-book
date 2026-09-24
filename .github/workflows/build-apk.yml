@@ -13,16 +13,16 @@ jobs:
 
     steps:
     - name: 检出代码
-      uses: actions/checkout@v3
+      uses: actions/checkout@v5
 
     - name: 缓存 Android SDK
-      uses: actions/cache@v3
+      uses: actions/cache@v5
       with:
         path: /usr/local/lib/android/sdk
         key: ${{ runner.os }}-android-sdk
 
     - name: 缓存 Gradle
-      uses: actions/cache@v3
+      uses: actions/cache@v5
       with:
         path: |
           ~/.gradle/caches
@@ -30,13 +30,13 @@ jobs:
         key: ${{ runner.os }}-gradle-full-${{ hashFiles('**/*.gradle*', '**/*.properties') }}
 
     - name: 缓存 Flutter pub
-      uses: actions/cache@v3
+      uses: actions/cache@v5
       with:
         path: ~/.pub-cache
         key: ${{ runner.os }}-pub-full-${{ hashFiles('pubspec.lock') }}
 
     - name: 设置 Java 环境
-      uses: actions/setup-java@v3
+      uses: actions/setup-java@v5
       with:
         distribution: 'zulu'
         java-version: '17'
@@ -72,7 +72,7 @@ jobs:
         [ -f app-arm64-v8a-full-release.apk ] && mv app-arm64-v8a-full-release.apk voice-book-arm64-full.apk || true
 
     - name: 上传 Full 版本 APK
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: apk-full
         path: build/app/outputs/flutter-apk/voice-book-*-full.apk
@@ -85,16 +85,16 @@ jobs:
 
     steps:
     - name: 检出代码
-      uses: actions/checkout@v3
+      uses: actions/checkout@v5
 
     - name: 缓存 Android SDK
-      uses: actions/cache@v3
+      uses: actions/cache@v5
       with:
         path: /usr/local/lib/android/sdk
         key: ${{ runner.os }}-android-sdk
 
     - name: 缓存 Gradle
-      uses: actions/cache@v3
+      uses: actions/cache@v5
       with:
         path: |
           ~/.gradle/caches
@@ -102,13 +102,13 @@ jobs:
         key: ${{ runner.os }}-gradle-lite-${{ hashFiles('**/*.gradle*', '**/*.properties') }}
 
     - name: 缓存 Flutter pub (Lite)
-      uses: actions/cache@v3
+      uses: actions/cache@v5
       with:
         path: ~/.pub-cache
         key: ${{ runner.os }}-pub-lite-${{ hashFiles('pubspec_lite.yaml') }}
 
     - name: 设置 Java 环境
-      uses: actions/setup-java@v3
+      uses: actions/setup-java@v5
       with:
         distribution: 'zulu'
         java-version: '17'
@@ -146,7 +146,7 @@ jobs:
         [ -f app-arm64-v8a-lite-release.apk ] && mv app-arm64-v8a-lite-release.apk voice-book-arm64-lite.apk || true
 
     - name: 上传 Lite 版本 APK
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: apk-lite
         path: build/app/outputs/flutter-apk/voice-book-*-lite.apk
@@ -163,19 +163,19 @@ jobs:
 
     steps:
     - name: 下载 Full 版本 APK
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v7
       with:
         name: apk-full
         path: apks
 
     - name: 下载 Lite 版本 APK
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v7
       with:
         name: apk-lite
         path: apks
 
     - name: 创建 GitHub Release
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3
       with:
         files: apks/voice-book-*.apk
         generate_release_notes: true

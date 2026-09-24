@@ -666,19 +666,19 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
   }
 
   /// 播放下一首
-  Future<void> playNext() async {
+  Future<bool> playNext() async {
     final nextAudio = await _getNextAudioFile();
-    if (nextAudio != null) {
-      await loadAndPlay(nextAudio, bookId: _currentBookId);
-    }
+    if (nextAudio == null) return false;
+    await loadAndPlay(nextAudio, bookId: _currentBookId);
+    return true;
   }
 
   /// 播放上一首
-  Future<void> playPrevious() async {
+  Future<bool> playPrevious() async {
     final previousAudio = await _getPreviousAudioFile();
-    if (previousAudio != null) {
-      await loadAndPlay(previousAudio, bookId: _currentBookId);
-    }
+    if (previousAudio == null) return false;
+    await loadAndPlay(previousAudio, bookId: _currentBookId);
+    return true;
   }
 
   /// 加载书籍信息（用于获取跳过设置等）

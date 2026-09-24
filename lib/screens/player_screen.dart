@@ -5,6 +5,8 @@ import '../models/audio_file.dart';
 import '../models/book.dart';
 import '../providers/audio_player_provider.dart';
 import '../providers/book_provider.dart';
+import '../providers/settings_provider.dart';
+import '../utils/list_sort.dart';
 import '../providers/sleep_timer_provider.dart';
 import '../widgets/sleep_timer_dialog.dart';
 import '../widgets/skip_settings_dialog.dart';
@@ -469,7 +471,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _showMoreOptions(BuildContext context) {
     showModalBottomSheet(
       context: context,
-      builder: (context) {
+      builder: (sheetContext) {
         return SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -478,7 +480,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 leading: const Icon(Icons.bookmark_add),
                 title: const Text('添加书签'),
                 onTap: () {
-                  Navigator.pop(context);
+                  Navigator.pop(sheetContext);
                   _addBookmark(context);
                 },
               ),
@@ -486,7 +488,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 leading: const Icon(Icons.bookmarks),
                 title: const Text('书签列表'),
                 onTap: () {
-                  Navigator.pop(context);
+                  Navigator.pop(sheetContext);
                   _showBookmarks(context);
                 },
               ),
@@ -494,7 +496,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 leading: const Icon(Icons.playlist_play),
                 title: const Text('播放列表'),
                 onTap: () {
-                  Navigator.pop(context);
+                  Navigator.pop(sheetContext);
                   _showPlaylist(context);
                 },
               ),
@@ -503,7 +505,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 title: const Text('跳过设置'),
                 subtitle: const Text('设置跳过开头和结尾的时长'),
                 onTap: () {
-                  Navigator.pop(context);
+                  Navigator.pop(sheetContext);
                   _showSkipSettings(context);
                 },
               ),
@@ -511,7 +513,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 leading: const Icon(Icons.info_outline),
                 title: const Text('音频信息'),
                 onTap: () {
-                  Navigator.pop(context);
+                  Navigator.pop(sheetContext);
                   _showAudioInfo(context);
                 },
               ),
@@ -524,10 +526,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   /// 显示播放列表
   void _showPlaylist(BuildContext context) {
-    if (widget.book == null) return;
-
     final bookProvider = context.read<BookProvider>();
     final audioPlayer = context.read<AudioPlayerProvider>();
+    final settings = context.read<SettingsProvider>();
+    final bookId = _getBookId(audioPlayer);
+    if (bookId == null) return;
+    final audioFilesFuture = bookProvider.databaseService
+        .getAudioFilesByBookId(bookId)
+        .then((maps) => sortAudioFiles(
+              maps.map(AudioFile.fromMap).toList(),
+              settings.audioSortField,
+              settings.audioSortAscending,
+            ));
 
     showModalBottomSheet(
       context: context,
@@ -540,10 +550,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
           expand: false,
           builder: (context, scrollController) {
             return FutureBuilder<List<AudioFile>>(
-              future: bookProvider.databaseService
-                  .getAudioFilesByBookId(widget.book!.id!)
-                  .then((maps) => maps.map((map) => AudioFile.fromMap(map)).toList()),
+              future: audioFilesFuture,
               builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(child: Text('加载播放列表失败: ${snapshot.error}'));
+                }
                 if (!snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 }
@@ -578,8 +589,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         itemCount: audioFiles.length,
                         itemBuilder: (context, index) {
                           final audio = audioFiles[index];
-                          final isPlaying =
-                              audioPlayer.currentAudioFile?.id == audio.id;
+                          final isPlaying = context.watch<AudioPlayerProvider>()
+                                  .currentAudioFile?.id == audio.id;
 
                           return ListTile(
                             dense: true,
@@ -616,7 +627,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             onLongPress: () =>
                                 showAudioFileDetails(context, audio),
                             onTap: () {
-                              audioPlayer.loadAndPlay(audio);
+                              audioPlayer.loadAndPlay(audio, bookId: bookId);
                               Navigator.pop(context);
                             },
                           );
@@ -693,66 +704,28 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   /// 获取当前书籍ID
   int? _getBookId(AudioPlayerProvider audioPlayer) {
-    return widget.book?.id ?? audioPlayer.currentBookId;
+    return audioPlayer.currentBookId ?? widget.book?.id ?? widget.audioFile.bookId;
   }
 
   /// 播放上一曲
-  void _playPrevious(BuildContext context) async {
-    final bookProvider = context.read<BookProvider>();
+  Future<void> _playPrevious(BuildContext context) async {
     final audioPlayer = context.read<AudioPlayerProvider>();
-    final bookId = _getBookId(audioPlayer);
-
-    if (bookId == null) return;
-
-    final audioFileMaps =
-        await bookProvider.databaseService.getAudioFilesByBookId(bookId);
-    final audioFiles = audioFileMaps.map((map) => AudioFile.fromMap(map)).toList();
-
-    if (audioFiles.isEmpty) return;
-
-    final currentIndex = audioFiles.indexWhere(
-      (audio) => audio.id == audioPlayer.currentAudioFile?.id,
-    );
-
-    if (currentIndex > 0) {
-      await audioPlayer.loadAndPlay(audioFiles[currentIndex - 1], bookId: bookId);
-    } else {
-      // ignore: use_build_context_synchronously
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已经是第一个文件了')),
-        );
-      }
+    final moved = await audioPlayer.playPrevious();
+    if (!moved && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已经是第一个文件了')),
+      );
     }
   }
 
   /// 播放下一曲
-  void _playNext(BuildContext context) async {
-    final bookProvider = context.read<BookProvider>();
+  Future<void> _playNext(BuildContext context) async {
     final audioPlayer = context.read<AudioPlayerProvider>();
-    final bookId = _getBookId(audioPlayer);
-
-    if (bookId == null) return;
-
-    final audioFileMaps =
-        await bookProvider.databaseService.getAudioFilesByBookId(bookId);
-    final audioFiles = audioFileMaps.map((map) => AudioFile.fromMap(map)).toList();
-
-    if (audioFiles.isEmpty) return;
-
-    final currentIndex = audioFiles.indexWhere(
-      (audio) => audio.id == audioPlayer.currentAudioFile?.id,
-    );
-
-    if (currentIndex < audioFiles.length - 1) {
-      await audioPlayer.loadAndPlay(audioFiles[currentIndex + 1], bookId: bookId);
-    } else {
-      // ignore: use_build_context_synchronously
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已经是最后一个文件了')),
-        );
-      }
+    final moved = await audioPlayer.playNext();
+    if (!moved && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已经是最后一个文件了')),
+      );
     }
   }
 
