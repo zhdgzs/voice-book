@@ -10,6 +10,7 @@ import '../utils/list_sort.dart';
 import '../models/audio_file.dart';
 import '../models/book.dart';
 import '../models/playback_progress.dart';
+import '../models/sleep_timer.dart';
 import '../services/database_service.dart';
 import '../services/audio_handler.dart';
 import '../main.dart' show audioHandler;
@@ -264,6 +265,34 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
     // 播放列表会在音频结束后自动推进，需要同步业务层的当前音频。
     _audioPlayer.currentIndexStream.listen(_syncCurrentAudioFromPlaylist);
 
+    // 播放列表中间的音频结束不会发出 completed，需要单独处理自然切集。
+    _audioPlayer.positionDiscontinuityStream.listen((discontinuity) {
+      if (_loadingPlaylist || _reorderingPlaylist ||
+          discontinuity.reason != PositionDiscontinuityReason.autoAdvance) {
+        return;
+      }
+
+      final previousIndex = discontinuity.previousEvent.currentIndex;
+      final currentIndex = discontinuity.event.currentIndex;
+      if (previousIndex == null || currentIndex == null ||
+          previousIndex == currentIndex ||
+          previousIndex < 0 || previousIndex >= _playlist.length ||
+          currentIndex < 0 || currentIndex >= _playlist.length) {
+        return;
+      }
+
+      // 跳过片尾已经处理过本集时，不重复扣减。
+      final alreadyCompleted = _hasTriggeredCompletion &&
+          _currentAudioFile?.id == _playlist[previousIndex].id;
+      _syncCurrentAudioFromPlaylist(currentIndex);
+      _position = discontinuity.event.updatePosition.inMilliseconds;
+      _duration = discontinuity.event.duration?.inMilliseconds ??
+          _playlist[currentIndex].duration;
+      if (!alreadyCompleted) {
+        _decrementSleepTimerEpisode();
+      }
+    });
+
     // 监听播放速度变化
     _audioPlayer.speedStream.listen((speed) {
       _playbackSpeed = speed;
@@ -514,26 +543,10 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
     debugPrint('当前音频: ${_currentAudioFile?.fileName}');
     debugPrint('当前书籍ID: $_currentBookId');
 
-    // 保存进度
+    // 先检查定时器，避免数据库写入延迟暂停。
+    final timerExpired = _decrementSleepTimerEpisode();
     await _saveProgress();
-
-    // 检查睡眠定时器（按集数模式）
-    if (_sleepTimerProvider != null) {
-      try {
-        final mode = _sleepTimerProvider!.mode;
-        if (mode != null && mode.toString().contains('episodes')) {
-          debugPrint('📉 减少睡眠定时器剩余集数');
-          _sleepTimerProvider!.decrementEpisode();
-          // 如果定时器已到期，不继续播放
-          if (!(_sleepTimerProvider!.isActive)) {
-            debugPrint('⏰ 睡眠定时器已到期，停止播放');
-            return;
-          }
-        }
-      } catch (e) {
-        debugPrint('❌ 处理睡眠定时器失败: $e');
-      }
-    }
+    if (timerExpired) return;
 
     // 获取下一个音频文件
     debugPrint('🔍 正在查找下一个音频文件...');
@@ -548,6 +561,18 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
     debugPrint('========================================');
   }
 
+  /// 记录完成一集，返回是否已到期；到期回调会立即暂停播放。
+  bool _decrementSleepTimerEpisode() {
+    final timer = _sleepTimerProvider;
+    if (timer == null || !timer.isActive ||
+        timer.mode != SleepTimerMode.episodes) {
+      return false;
+    }
+
+    timer.decrementEpisode();
+    return !timer.isActive;
+  }
+
   /// 睡眠定时器到期回调
   Future<void> _onSleepTimerExpired() async {
     debugPrint('⏰ 睡眠定时器到期，停止播放并保存进度');
@@ -558,6 +583,7 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
   }
 
   bool _reorderingPlaylist = false;
+  bool _loadingPlaylist = false;
   List<AudioFile> _sortedAudioRows(List<Map<String, dynamic>> rows) {
     final settings = _settingsProvider;
     return sortAudioFiles(rows.map(AudioFile.fromMap).toList(),
@@ -790,6 +816,7 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
   /// 自动处理需要转码的音频格式
   Future<void> _loadBookPlaylist(AudioFile currentAudio, int bookId) async {
     final previousPlaylist = _playlist;
+    _loadingPlaylist = true;
 
     try {
       final db = await _databaseService.database;
@@ -856,6 +883,8 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
       _playlist = previousPlaylist;
       debugPrint('❌ 加载播放列表失败: $e');
       rethrow;
+    } finally {
+      _loadingPlaylist = false;
     }
   }
 
