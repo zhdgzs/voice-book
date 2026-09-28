@@ -411,7 +411,8 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
       return;
     }
     try {
-      await _audioPlayer.pause();
+      // 切集事件同步分发，延后暂停，避免向正在分发的播放器状态流重入。
+      await Future<void>.microtask(_audioPlayer.pause);
       await _saveProgress();
 
     } on PlayerInterruptedException {
@@ -561,7 +562,7 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
     debugPrint('========================================');
   }
 
-  /// 记录完成一集，返回是否已到期；到期回调会立即暂停播放。
+  /// 记录完成一集，返回是否已到期；到期回调会触发暂停播放。
   bool _decrementSleepTimerEpisode() {
     final timer = _sleepTimerProvider;
     if (timer == null || !timer.isActive ||
