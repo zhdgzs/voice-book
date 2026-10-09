@@ -29,11 +29,18 @@ void main() async {
       androidNotificationChannelId: 'com.voicebook.audio',
       androidNotificationChannelName: 'Voice Book 音频播放',
       androidNotificationChannelDescription: '用于控制有声书播放',
-      androidNotificationOngoing: true,
+      // 暂停时保留前台服务，避免从通知栏恢复播放时受系统限制。
+      // 前台服务会保持通知，无需设置 androidNotificationOngoing。
+      androidStopForegroundOnPause: false,
       androidNotificationIcon: 'mipmap/ic_launcher',
       androidShowNotificationBadge: true,
     ),
   );
+
+  // 服务状态同步的异常不会传递到播放器的 play()，需要单独记录。
+  AudioService.asyncError.listen((error) {
+    debugPrint('后台音频服务异常: $error');
+  });
 
   // 预初始化数据库
   try {

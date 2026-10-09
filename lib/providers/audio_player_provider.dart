@@ -912,7 +912,10 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
 
   /// 创建 AudioSource
   AudioSource _createAudioSource(AudioFile audioFile, {String? overridePath}) {
-    return AudioSource.uri(Uri.file(overridePath ?? audioFile.filePath));
+    return AudioSource.uri(
+      Uri.file(overridePath ?? audioFile.filePath),
+      tag: _createMediaItem(audioFile, _currentBook),
+    );
   }
 
   /// 创建 MediaItem（用于通知栏和锁屏页显示）

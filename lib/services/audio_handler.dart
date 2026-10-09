@@ -26,7 +26,12 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   AudioPlayerHandler() {
     // 监听播放状态变化，更新通知栏
     _player.playerStateStream.listen((_) => _broadcastState());
-    _player.currentIndexStream.listen((index) {
+    // 跟随实际音频源更新媒体信息，兼容播放列表和转码后的单文件模式。
+    _player.sequenceStateStream.listen((state) {
+      final currentMediaItem = state.currentSource?.tag;
+      if (currentMediaItem is MediaItem && mediaItem.value != currentMediaItem) {
+        mediaItem.add(currentMediaItem);
+      }
       _broadcastState();
     });
     // 初始化时广播初始状态
@@ -34,9 +39,13 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   }
 
   void _broadcastState() {
-    // 将 idle 映射为 ready，避免 audio_service 断开连接
+    // 单文件模式下播放器索引始终为 0，通知栏索引需按媒体 ID 匹配书籍队列。
+    final currentMediaId = mediaItem.value?.id;
+    final queueIndex = queue.value.indexWhere((item) => item.id == currentMediaId);
+
+    // 真正停止时进入 idle，让 audio_service 释放前台服务和唤醒锁。
     final processingState = switch (_player.processingState) {
-      ProcessingState.idle => AudioProcessingState.ready,
+      ProcessingState.idle => AudioProcessingState.idle,
       ProcessingState.loading => AudioProcessingState.loading,
       ProcessingState.buffering => AudioProcessingState.buffering,
       ProcessingState.ready => AudioProcessingState.ready,
@@ -62,7 +71,7 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
       updatePosition: _player.position,
       bufferedPosition: _player.bufferedPosition,
       speed: _player.speed,
-      queueIndex: _player.currentIndex,
+      queueIndex: queueIndex >= 0 ? queueIndex : null,
     ));
   }
 
@@ -127,20 +136,10 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
 
   /// 更新队列和当前媒体项
   void updateQueueWithIndex(List<MediaItem> items, int currentIndex) {
-    
-    debugPrint('📚 加载单个音频333: ${queue.value}');
     queue.add(items);
-  
-    debugPrint('📚 加载单个音频33311: ${queue.value}');
-    
-    debugPrint('📚 加载单个音频555: ${items[currentIndex]}');
-    if (items.isNotEmpty && currentIndex < items.length) {
-      
-    debugPrint('📚 加载单个音频666: ${mediaItem.value}');
+    if (currentIndex >= 0 && currentIndex < items.length) {
       mediaItem.add(items[currentIndex]);
-      
-    debugPrint('📚 加载单个音频66611: ${mediaItem.value}');
     }
+    _broadcastState();
   }
-  
 }
