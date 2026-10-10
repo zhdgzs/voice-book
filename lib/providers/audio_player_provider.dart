@@ -889,7 +889,7 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
     }
   }
 
-  /// 同步播放器自动推进后的当前音频，确保页面和列表显示正确。
+  /// 同步播放器自动推进后的当前音频，确保页面、列表和通知栏显示一致。
   void _syncCurrentAudioFromPlaylist(int? index) {
     if (_reorderingPlaylist || index == null || index < 0 || index >= _playlist.length) return;
 
@@ -900,6 +900,8 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
     _position = 0;
     _duration = audioFile.duration;
     _hasTriggeredCompletion = false;
+
+    audioHandler.updateCurrentMediaItem(audioFile.id.toString());
 
     debugPrint('🔄 播放列表已自动切换: ${audioFile.fileName} (索引: $index)');
 
@@ -912,10 +914,7 @@ class AudioPlayerProvider extends ChangeNotifier implements AudioControlCallback
 
   /// 创建 AudioSource
   AudioSource _createAudioSource(AudioFile audioFile, {String? overridePath}) {
-    return AudioSource.uri(
-      Uri.file(overridePath ?? audioFile.filePath),
-      tag: _createMediaItem(audioFile, _currentBook),
-    );
+    return AudioSource.uri(Uri.file(overridePath ?? audioFile.filePath));
   }
 
   /// 创建 MediaItem（用于通知栏和锁屏页显示）

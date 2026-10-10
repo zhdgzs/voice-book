@@ -29,9 +29,7 @@ void main() async {
       androidNotificationChannelId: 'com.voicebook.audio',
       androidNotificationChannelName: 'Voice Book 音频播放',
       androidNotificationChannelDescription: '用于控制有声书播放',
-      // 暂停时保留前台服务，避免从通知栏恢复播放时受系统限制。
-      // 前台服务会保持通知，无需设置 androidNotificationOngoing。
-      androidStopForegroundOnPause: false,
+      androidNotificationOngoing: true,
       androidNotificationIcon: 'mipmap/ic_launcher',
       androidShowNotificationBadge: true,
     ),

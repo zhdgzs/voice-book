@@ -26,12 +26,7 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   AudioPlayerHandler() {
     // 监听播放状态变化，更新通知栏
     _player.playerStateStream.listen((_) => _broadcastState());
-    // 跟随实际音频源更新媒体信息，兼容播放列表和转码后的单文件模式。
-    _player.sequenceStateStream.listen((state) {
-      final currentMediaItem = state.currentSource?.tag;
-      if (currentMediaItem is MediaItem && mediaItem.value != currentMediaItem) {
-        mediaItem.add(currentMediaItem);
-      }
+    _player.currentIndexStream.listen((index) {
       _broadcastState();
     });
     // 初始化时广播初始状态
@@ -39,13 +34,9 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   }
 
   void _broadcastState() {
-    // 单文件模式下播放器索引始终为 0，通知栏索引需按媒体 ID 匹配书籍队列。
-    final currentMediaId = mediaItem.value?.id;
-    final queueIndex = queue.value.indexWhere((item) => item.id == currentMediaId);
-
-    // 真正停止时进入 idle，让 audio_service 释放前台服务和唤醒锁。
+    // 保持 v1.0.4 的服务生命周期，避免 idle 通知触发 audio_service 停止服务。
     final processingState = switch (_player.processingState) {
-      ProcessingState.idle => AudioProcessingState.idle,
+      ProcessingState.idle => AudioProcessingState.ready,
       ProcessingState.loading => AudioProcessingState.loading,
       ProcessingState.buffering => AudioProcessingState.buffering,
       ProcessingState.ready => AudioProcessingState.ready,
@@ -71,7 +62,7 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
       updatePosition: _player.position,
       bufferedPosition: _player.bufferedPosition,
       speed: _player.speed,
-      queueIndex: queueIndex >= 0 ? queueIndex : null,
+      queueIndex: _player.currentIndex,
     ));
   }
 
@@ -134,12 +125,20 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
     await _player.setAudioSource(source);
   }
 
+  /// 按音频 ID 同步通知栏信息，避免单文件模式的播放器索引与队列索引不一致。
+  void updateCurrentMediaItem(String mediaId) {
+    final items = queue.value;
+    final index = items.indexWhere((item) => item.id == mediaId);
+    if (index >= 0) {
+      mediaItem.add(items[index]);
+    }
+  }
+
   /// 更新队列和当前媒体项
   void updateQueueWithIndex(List<MediaItem> items, int currentIndex) {
     queue.add(items);
     if (currentIndex >= 0 && currentIndex < items.length) {
       mediaItem.add(items[currentIndex]);
     }
-    _broadcastState();
   }
 }

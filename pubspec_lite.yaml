@@ -1,6 +1,6 @@
 name: voice_book
 description: Offline local audiobook player focusing on low resource usage and privacy.
-version: 1.0.5+6
+version: 1.0.6+7
 publish_to: "none"
 
 environment:
